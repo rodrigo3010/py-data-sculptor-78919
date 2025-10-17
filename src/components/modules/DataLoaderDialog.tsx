@@ -17,7 +17,7 @@ interface DataLoaderDialogProps {
 }
 
 const SUPABASE_URL = "https://syqvsnlqexyxleuabdvv.supabase.co";
-const SUPABASE_KEY = "sb_publishable_KDemhs92LpO4vimYBYQCVA_Q-RHGHXv";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5cXZzbmxxZXh5eGxldWFiZHZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwNDYzNzAsImV4cCI6MjA3NTYyMjM3MH0.fhHO5pYkHSZzM_yxg0MZrRRVPdC1FCZoxvdgOcZrviM";
 
 export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) => {
   const [file, setFile] = useState<File | null>(null);
