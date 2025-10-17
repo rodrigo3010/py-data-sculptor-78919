@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      estudiantes: {
+        Row: {
+          apellido: string | null
+          id: number
+          nombre: string
+        }
+        Insert: {
+          apellido?: string | null
+          id?: number
+          nombre: string
+        }
+        Update: {
+          apellido?: string | null
+          id?: number
+          nombre?: string
+        }
+        Relationships: []
+      }
       Verdadera_Música: {
         Row: {
           año: string | null
