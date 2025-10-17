@@ -14,7 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      Verdadera_Música: {
+        Row: {
+          año: string | null
+          artista: string | null
+          genero: string | null
+          id: number
+          nacionalidad: string
+          nombre: string
+        }
+        Insert: {
+          año?: string | null
+          artista?: string | null
+          genero?: string | null
+          id?: number
+          nacionalidad: string
+          nombre: string
+        }
+        Update: {
+          año?: string | null
+          artista?: string | null
+          genero?: string | null
+          id?: number
+          nacionalidad?: string
+          nombre?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
