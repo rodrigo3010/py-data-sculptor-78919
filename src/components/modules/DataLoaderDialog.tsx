@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Upload, Database } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { createClient } from "@supabase/supabase-js";
 
 interface DataLoaderDialogProps {
   open: boolean;
@@ -22,10 +23,20 @@ const mockData = [
   { id: 5, nombre: "Pedro Sánchez", edad: 36, ciudad: "Bilbao", salario: 55000 },
 ];
 
+const SUPABASE_URL = "https://syqvsnlqexyxleuabdvv.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5cXZzbmxxZXh5eGxldWFiZHZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU4NDgxODgsImV4cCI6MjA1MTQyNDE4OH0.KDemhs92LpO4vimYBYQCVA_Q-RHGHXv";
+
 export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [showData, setShowData] = useState(false);
+  const [tables, setTables] = useState<string[]>([]);
+  const [selectedTable, setSelectedTable] = useState<string>("");
+  const [tableData, setTableData] = useState<any[]>([]);
+  const [tableColumns, setTableColumns] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -37,11 +48,93 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
     }
   };
 
-  const handleDatabaseConnect = () => {
-    toast({
-      title: "Conectando a base de datos",
-      description: "Esta funcionalidad requiere configuración del backend",
-    });
+  useEffect(() => {
+    if (open) {
+      loadTables();
+    }
+  }, [open]);
+
+  const loadTables = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabaseClient.rpc('get_table_names');
+      
+      if (error) {
+        // Si la función RPC no existe, intentamos obtener las tablas del esquema public
+        const { data: tablesData, error: tablesError } = await supabaseClient
+          .from('information_schema.tables')
+          .select('table_name')
+          .eq('table_schema', 'public');
+        
+        if (tablesError) {
+          // Fallback: intentar con algunas tablas comunes
+          const commonTables = ['profiles', 'users', 'posts', 'products'];
+          const existingTables = [];
+          
+          for (const table of commonTables) {
+            const { error } = await supabaseClient.from(table).select('*').limit(1);
+            if (!error) existingTables.push(table);
+          }
+          
+          setTables(existingTables);
+        } else {
+          setTables(tablesData?.map((t: any) => t.table_name) || []);
+        }
+      } else {
+        setTables(data || []);
+      }
+    } catch (error) {
+      toast({
+        title: "Error al cargar tablas",
+        description: "No se pudieron obtener las tablas de la base de datos",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTableData = async (tableName: string) => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabaseClient
+        .from(tableName)
+        .select('*')
+        .limit(100);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setTableData(data);
+        setTableColumns(Object.keys(data[0]));
+        toast({
+          title: "Datos cargados",
+          description: `${data.length} registros cargados de la tabla ${tableName}`,
+        });
+      } else {
+        setTableData([]);
+        setTableColumns([]);
+        toast({
+          title: "Tabla vacía",
+          description: `La tabla ${tableName} no contiene datos`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error al cargar datos",
+        description: "No se pudieron obtener los datos de la tabla",
+        variant: "destructive",
+      });
+      setTableData([]);
+      setTableColumns([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTableSelect = (tableName: string) => {
+    setSelectedTable(tableName);
+    loadTableData(tableName);
   };
 
   return (
@@ -153,52 +246,59 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
           
           <TabsContent value="database" className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="db-type">Tipo de Base de Datos</Label>
-              <Select>
+              <Label htmlFor="table-select">Seleccionar Tabla</Label>
+              <Select value={selectedTable} onValueChange={handleTableSelect} disabled={loading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar tipo" />
+                  <SelectValue placeholder={loading ? "Cargando tablas..." : "Seleccionar tabla"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                  <SelectItem value="mysql">MySQL</SelectItem>
-                  <SelectItem value="sqlite">SQLite</SelectItem>
-                  <SelectItem value="mongodb">MongoDB</SelectItem>
+                  {tables.map((table) => (
+                    <SelectItem key={table} value={table}>
+                      {table}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="host">Host</Label>
-              <Input id="host" placeholder="localhost" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="port">Puerto</Label>
-                <Input id="port" placeholder="5432" />
+            {selectedTable && tableData.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <Label>Datos de la tabla: {selectedTable}</Label>
+                <div className="border rounded-lg overflow-auto max-h-96">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {tableColumns.map((column) => (
+                          <TableHead key={column}>{column}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tableData.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {tableColumns.map((column) => (
+                            <TableCell key={column}>
+                              {typeof row[column] === 'object' 
+                                ? JSON.stringify(row[column]) 
+                                : String(row[column] ?? '')}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  ✓ {tableData.length} registros cargados de {selectedTable}
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="database">Base de Datos</Label>
-                <Input id="database" placeholder="mi_database" />
-              </div>
-            </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="username">Usuario</Label>
-              <Input id="username" />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Input id="password" type="password" />
-            </div>
-
-            <Button 
-              className="w-full bg-gradient-primary"
-              onClick={handleDatabaseConnect}
-            >
-              Conectar Base de Datos
-            </Button>
+            {selectedTable && tableData.length === 0 && !loading && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                La tabla seleccionada está vacía
+              </p>
+            )}
           </TabsContent>
         </Tabs>
       </DialogContent>
