@@ -1,14 +1,18 @@
 import { useState } from "react";
-import { Database, Droplet, Brain, BarChart3 } from "lucide-react";
+import { Database, Droplet, Brain, BarChart3, Table } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { ModuleCard } from "@/components/ModuleCard";
 import { DataLoaderDialog } from "@/components/modules/DataLoaderDialog";
 import { DataCleanerDialog } from "@/components/modules/DataCleanerDialog";
 import { ModelTrainerDialog } from "@/components/modules/ModelTrainerDialog";
 import { ResultsDialog } from "@/components/modules/ResultsDialog";
 import { Badge } from "@/components/ui/badge";
+import { useData } from "@/contexts/DataContext";
 
 const Index = () => {
   const [activeDialog, setActiveDialog] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { loadedData } = useData();
 
   const modules = [
     {
@@ -43,6 +47,15 @@ const Index = () => {
       iconColor: "bg-gradient-secondary",
       completed: false,
     },
+    {
+      id: "table",
+      title: "Tabla",
+      description: "Visualiza y filtra los datos cargados en una vista completa",
+      icon: Table,
+      iconColor: "bg-gradient-primary",
+      completed: !!loadedData,
+      disabled: !loadedData,
+    },
   ];
 
   return (
@@ -72,7 +85,17 @@ const Index = () => {
               icon={module.icon}
               iconColor={module.iconColor}
               completed={module.completed}
-              onClick={() => setActiveDialog(module.id)}
+              onClick={() => {
+                if (module.id === "table") {
+                  if (loadedData) {
+                    navigate("/table-view");
+                  }
+                } else {
+                  setActiveDialog(module.id);
+                }
+              }}
+              className={module.id === "table" ? "md:col-span-2" : ""}
+              disabled={module.disabled}
             />
           ))}
         </div>

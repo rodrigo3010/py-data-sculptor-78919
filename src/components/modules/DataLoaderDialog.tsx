@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -6,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, Database } from "lucide-react";
+import { Upload, Database, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useData } from "@/contexts/DataContext";
 import { createClient } from "@supabase/supabase-js";
 import Papa from "papaparse";
 
@@ -31,6 +33,8 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
   const [tableColumns, setTableColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { setLoadedData } = useData();
 
   const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -182,6 +186,28 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
     loadTableData(tableName);
   };
 
+  const handleViewFullTable = (source: "csv" | "database") => {
+    if (source === "csv" && csvData.length > 0) {
+      setLoadedData({
+        tableName: file?.name || "CSV Data",
+        columns: csvColumns,
+        rows: csvData,
+        source: "csv",
+      });
+      onOpenChange(false);
+      navigate("/table-view");
+    } else if (source === "database" && tableData.length > 0) {
+      setLoadedData({
+        tableName: selectedTable,
+        columns: tableColumns,
+        rows: tableData,
+        source: "database",
+      });
+      onOpenChange(false);
+      navigate("/table-view");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -281,9 +307,19 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
                     </TableBody>
                   </Table>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  ✓ Dataset cargado con éxito - {csvData.length} filas × {csvColumns.length} columnas
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    ✓ Dataset cargado con éxito - {csvData.length} filas × {csvColumns.length} columnas
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleViewFullTable("csv")}
+                    className="gap-2"
+                  >
+                    Ver tabla completa
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
           </TabsContent>
@@ -332,9 +368,19 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
                     </TableBody>
                   </Table>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  ✓ {tableData.length} registros cargados de {selectedTable}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    ✓ {tableData.length} registros cargados de {selectedTable}
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleViewFullTable("database")}
+                    className="gap-2"
+                  >
+                    Ver tabla completa
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
 

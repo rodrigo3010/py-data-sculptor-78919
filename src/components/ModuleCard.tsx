@@ -2,6 +2,7 @@ import { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface ModuleCardProps {
   title: string;
@@ -10,6 +11,8 @@ interface ModuleCardProps {
   iconColor: string;
   completed?: boolean;
   onClick: () => void;
+  className?: string;
+  disabled?: boolean;
 }
 
 export const ModuleCard = ({
@@ -19,9 +22,15 @@ export const ModuleCard = ({
   iconColor,
   completed = false,
   onClick,
+  className,
+  disabled = false,
 }: ModuleCardProps) => {
   return (
-    <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+    <Card className={cn(
+      "group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1",
+      disabled && "opacity-50 cursor-not-allowed hover:shadow-none hover:translate-y-0",
+      className
+    )}>
       <CardHeader className="space-y-4">
         <div className="flex items-start justify-between">
           <div className={`p-3 rounded-xl ${iconColor} transition-transform duration-300 group-hover:scale-110`}>
@@ -42,9 +51,10 @@ export const ModuleCard = ({
         <Button 
           variant="outline" 
           onClick={onClick}
+          disabled={disabled}
           className="w-full transition-colors duration-300 hover:bg-primary hover:text-primary-foreground"
         >
-          Abrir módulo
+          {disabled ? "Sin datos cargados" : "Abrir módulo"}
         </Button>
       </CardContent>
     </Card>
