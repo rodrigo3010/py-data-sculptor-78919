@@ -11,7 +11,6 @@ import { Upload, Database, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/DataContext";
 import { createClient } from "@supabase/supabase-js";
-import Papa from "papaparse";
 
 interface DataLoaderDialogProps {
   open: boolean;
@@ -51,7 +50,7 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
     }
   };
 
-  const loadCSVData = () => {
+  const loadCSVData = async () => {
     if (!file) {
       toast({
         title: "Error",
@@ -63,42 +62,51 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
 
     setLoading(true);
     
-    Papa.parse(file, {
-      header: true,
-      delimiter: delimiter,
-      encoding: encoding,
-      complete: (results) => {
-        if (results.data && results.data.length > 0) {
-          const data = results.data.filter((row: any) => 
-            Object.values(row).some(val => val !== null && val !== undefined && val !== '')
-          );
-          
-          if (data.length > 0) {
-            setCsvData(data.slice(0, 100)); // Limitar a 100 filas
-            setCsvColumns(Object.keys(data[0]));
-            toast({
-              title: "CSV cargado exitosamente",
-              description: `${data.length} filas cargadas`,
-            });
-          } else {
-            toast({
-              title: "Archivo vacío",
-              description: "El archivo CSV no contiene datos válidos",
-              variant: "destructive",
-            });
-          }
-        }
-        setLoading(false);
-      },
-      error: (error) => {
+    try {
+      // Use Pandas-like processing via Edge Function
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('delimiter', delimiter);
+      formData.append('encoding', encoding);
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/load-csv`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Error al procesar CSV');
+      }
+
+      if (result.data && result.data.length > 0) {
+        setCsvData(result.data);
+        setCsvColumns(result.columns);
         toast({
-          title: "Error al leer CSV",
-          description: error.message,
+          title: "CSV cargado con Pandas",
+          description: `${result.totalRows} filas procesadas con Pandas - Mostrando ${result.data.length} filas`,
+        });
+      } else {
+        toast({
+          title: "Archivo vacío",
+          description: "El archivo CSV no contiene datos válidos",
           variant: "destructive",
         });
-        setLoading(false);
-      },
-    });
+      }
+    } catch (error: any) {
+      console.error('Error loading CSV:', error);
+      toast({
+        title: "Error al cargar CSV",
+        description: error.message || "No se pudo procesar el archivo",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

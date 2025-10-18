@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Droplet, Sparkles, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { useData } from "@/contexts/DataContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DataCleanerDialogProps {
   open: boolean;
@@ -33,13 +35,71 @@ const cleanedData = [
 
 export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps) => {
   const { toast } = useToast();
+  const { loadedData, setLoadedData } = useData();
   const [showCleaned, setShowCleaned] = useState(false);
+  const [cleanedData, setCleanedData] = useState<any[]>([]);
+  const [imputationMethod, setImputationMethod] = useState("mean");
+  const [removeNulls, setRemoveNulls] = useState(false);
+  const [normalizationMethod, setNormalizationMethod] = useState("minmax");
+  const [removeOutliers, setRemoveOutliers] = useState(false);
+  const [outlierMethod, setOutlierMethod] = useState("iqr");
+  const [loading, setLoading] = useState(false);
 
-  const handleClean = (action: string) => {
-    toast({
-      title: "Procesando datos",
-      description: `Aplicando ${action} con Pandas y NumPy`,
-    });
+  const displayData = showCleaned ? cleanedData : (loadedData?.rows.slice(0, 5) || dirtyData);
+  const displayColumns = loadedData?.columns || ["id", "nombre", "edad", "ciudad", "salario"];
+
+  const handleClean = async (operation: 'missing' | 'normalize' | 'transform', params: any = {}) => {
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
+      toast({
+        title: "No hay datos cargados",
+        description: "Por favor carga datos primero usando el módulo 'Cargar Datos'",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('clean-data', {
+        body: {
+          operation,
+          data: loadedData.rows,
+          columns: loadedData.columns,
+          params,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        setCleanedData(data.data);
+        setShowCleaned(true);
+        
+        // Update the loaded data context
+        setLoadedData({
+          ...loadedData,
+          rows: data.data,
+          columns: data.columns,
+        });
+
+        toast({
+          title: "Datos procesados con Pandas y NumPy",
+          description: data.message,
+        });
+      } else {
+        throw new Error(data?.error || 'Error desconocido');
+      }
+    } catch (error: any) {
+      console.error('Error cleaning data:', error);
+      toast({
+        title: "Error al procesar datos",
+        description: error.message || "No se pudieron procesar los datos",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -71,51 +131,52 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
           <TabsContent value="missing" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Datos {showCleaned ? "después de limpieza" : "con valores nulos detectados"}</Label>
-                <div className="border rounded-lg overflow-hidden">
+                <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
+                <div className="border rounded-lg overflow-hidden max-h-64">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>ID</TableHead>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead>Edad</TableHead>
-                        <TableHead>Ciudad</TableHead>
-                        <TableHead>Salario</TableHead>
+                        {displayColumns.map((col) => (
+                          <TableHead key={col}>{col}</TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(showCleaned ? cleanedData : dirtyData).map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>{row.id}</TableCell>
-                          <TableCell>
-                            {row.nombre ?? <Badge variant="destructive">NULL</Badge>}
-                          </TableCell>
-                          <TableCell>
-                            {row.edad ?? <Badge variant="destructive">NULL</Badge>}
-                          </TableCell>
-                          <TableCell>
-                            {row.ciudad ?? <Badge variant="destructive">NULL</Badge>}
-                          </TableCell>
-                          <TableCell>
-                            {row.salario ? `$${row.salario.toLocaleString()}` : <Badge variant="destructive">NULL</Badge>}
-                          </TableCell>
+                      {displayData.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {displayColumns.map((col) => (
+                            <TableCell key={col}>
+                              {row[col] === null || row[col] === undefined || row[col] === '' ? (
+                                <Badge variant="destructive">NULL</Badge>
+                              ) : (
+                                String(row[col])
+                              )}
+                            </TableCell>
+                          ))}
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {showCleaned ? "✓ 0 valores nulos - Dataset limpio" : "⚠️ 4 valores nulos detectados en el dataset"}
-                </p>
+                {!loadedData && (
+                  <p className="text-sm text-muted-foreground text-center">
+                    ℹ️ Carga datos desde el módulo "Cargar Datos" para comenzar
+                  </p>
+                )}
               </div>
+              
               <div className="flex items-center justify-between">
                 <Label htmlFor="remove-nulls">Eliminar filas con valores nulos</Label>
-                <Switch id="remove-nulls" />
+                <Switch 
+                  id="remove-nulls" 
+                  checked={removeNulls}
+                  onCheckedChange={setRemoveNulls}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Método de imputación</Label>
-                <Select>
+                <Select value={imputationMethod} onValueChange={setImputationMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar método" />
                   </SelectTrigger>
@@ -129,28 +190,21 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
                 </Select>
               </div>
 
-              <div className="flex items-center justify-between">
-                <Label htmlFor="interpolate">Interpolación para series temporales</Label>
-                <Switch id="interpolate" />
-              </div>
-
               <Button 
                 className="w-full bg-gradient-secondary"
-                onClick={() => {
-                  handleClean("manejo de valores nulos");
-                  setShowCleaned(true);
-                }}
+                onClick={() => handleClean('missing', {
+                  method: imputationMethod,
+                  removeNulls,
+                })}
+                disabled={loading || !loadedData}
               >
-                Aplicar Limpieza de Nulos
+                {loading ? "Procesando con Pandas..." : "Aplicar Limpieza de Nulos"}
               </Button>
 
               {showCleaned && (
                 <div className="p-4 bg-success/10 border border-success/20 rounded-lg">
                   <p className="text-sm font-medium text-success">
                     ✓ Datos limpiados exitosamente con Pandas y NumPy
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    4 valores nulos fueron imputados usando la media
                   </p>
                 </div>
               )}
@@ -161,7 +215,7 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Método de normalización</Label>
-                <Select>
+                <Select value={normalizationMethod} onValueChange={setNormalizationMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar método" />
                   </SelectTrigger>
@@ -169,35 +223,42 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
                     <SelectItem value="minmax">Min-Max Scaling (0-1)</SelectItem>
                     <SelectItem value="standard">Standardization (Z-score)</SelectItem>
                     <SelectItem value="robust">Robust Scaler</SelectItem>
-                    <SelectItem value="l2">Normalización L2</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="remove-outliers">Detectar y remover outliers (NumPy)</Label>
-                <Switch id="remove-outliers" />
+                <Switch 
+                  id="remove-outliers"
+                  checked={removeOutliers}
+                  onCheckedChange={setRemoveOutliers}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Método de detección de outliers</Label>
-                <Select>
+                <Select value={outlierMethod} onValueChange={setOutlierMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar método" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="iqr">IQR (Rango Intercuartil)</SelectItem>
                     <SelectItem value="zscore">Z-Score</SelectItem>
-                    <SelectItem value="isolation">Isolation Forest</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <Button 
                 className="w-full bg-gradient-secondary"
-                onClick={() => handleClean("normalización")}
+                onClick={() => handleClean('normalize', {
+                  method: normalizationMethod,
+                  removeOutliers,
+                  outlierMethod,
+                })}
+                disabled={loading || !loadedData}
               >
-                Aplicar Normalización
+                {loading ? "Procesando con Pandas..." : "Aplicar Normalización"}
               </Button>
             </div>
           </TabsContent>
@@ -214,7 +275,6 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
                     <SelectItem value="onehot">One-Hot Encoding</SelectItem>
                     <SelectItem value="label">Label Encoding</SelectItem>
                     <SelectItem value="ordinal">Ordinal Encoding</SelectItem>
-                    <SelectItem value="target">Target Encoding</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -224,30 +284,12 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
                 <Switch id="log-transform" />
               </div>
 
-              <div className="flex items-center justify-between">
-                <Label htmlFor="poly-features">Crear características polinomiales</Label>
-                <Switch id="poly-features" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Reducción de dimensionalidad</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pca">PCA (NumPy)</SelectItem>
-                    <SelectItem value="tsne">t-SNE</SelectItem>
-                    <SelectItem value="umap">UMAP</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               <Button 
                 className="w-full bg-gradient-secondary"
-                onClick={() => handleClean("transformación de datos")}
+                onClick={() => handleClean('transform', {})}
+                disabled={loading || !loadedData}
               >
-                Aplicar Transformaciones
+                {loading ? "Procesando con Pandas..." : "Aplicar Transformaciones"}
               </Button>
             </div>
           </TabsContent>
