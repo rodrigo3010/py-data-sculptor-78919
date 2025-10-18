@@ -109,35 +109,31 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
       const { data, error } = await supabaseClient.rpc('get_table_names');
       
       if (error) {
-        // Si la función RPC no existe, intentamos obtener las tablas del esquema public
-        const { data: tablesData, error: tablesError } = await supabaseClient
-          .from('information_schema.tables')
-          .select('table_name')
-          .eq('table_schema', 'public');
-        
-        if (tablesError) {
-          // Fallback: intentar con algunas tablas comunes
-          const commonTables = ['profiles', 'users', 'posts', 'products'];
-          const existingTables = [];
-          
-          for (const table of commonTables) {
-            const { error } = await supabaseClient.from(table).select('*').limit(1);
-            if (!error) existingTables.push(table);
-          }
-          
-          setTables(existingTables);
-        } else {
-          setTables(tablesData?.map((t: any) => t.table_name) || []);
-        }
+        console.error("Error loading tables:", error);
+        toast({
+          title: "Error al cargar tablas",
+          description: error.message || "No se pudieron obtener las tablas de la base de datos",
+          variant: "destructive",
+        });
+        setTables([]);
       } else {
-        setTables(data || []);
+        const tableNames = data?.map((item: any) => item.table_name) || [];
+        setTables(tableNames);
+        if (tableNames.length > 0) {
+          toast({
+            title: "Tablas cargadas",
+            description: `Se encontraron ${tableNames.length} tablas en la base de datos`,
+          });
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Error loading tables:", error);
       toast({
         title: "Error al cargar tablas",
-        description: "No se pudieron obtener las tablas de la base de datos",
+        description: error.message || "No se pudieron obtener las tablas de la base de datos",
         variant: "destructive",
       });
+      setTables([]);
     } finally {
       setLoading(false);
     }
