@@ -63,18 +63,16 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
     setLoading(true);
     
     try {
-      // Use Pandas-like processing via Edge Function
+      // Use Python backend for processing
       const formData = new FormData();
       formData.append('file', file);
       formData.append('delimiter', delimiter);
       formData.append('encoding', encoding);
+      formData.append('preview_rows', '1000');
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/load-csv`, {
+      const response = await fetch('http://localhost:8000/load-csv', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-        },
-        body: formData,
+        body: formData
       });
 
       const result = await response.json();
@@ -87,8 +85,8 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
         setCsvData(result.data);
         setCsvColumns(result.columns);
         toast({
-          title: "CSV cargado con Pandas",
-          description: `${result.totalRows} filas procesadas con Pandas - Mostrando ${result.data.length} filas`,
+          title: "CSV cargado exitosamente",
+          description: `${result.totalRows} filas totales - Mostrando ${result.data.length} filas de previsualización`,
         });
       } else {
         toast({
@@ -222,7 +220,7 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
         <DialogHeader>
           <DialogTitle className="text-2xl">Cargar Datos</DialogTitle>
           <DialogDescription>
-            Importa archivos CSV o conecta a bases de datos externas usando Pandas
+            Importa archivos CSV o conecta a bases de datos externas
           </DialogDescription>
         </DialogHeader>
         
