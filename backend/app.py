@@ -173,4 +173,4 @@ async def clean_data(request: CleanDataRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="161.132.54.35", port=8000)
