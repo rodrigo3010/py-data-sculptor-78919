@@ -60,7 +60,7 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
     setLoading(true);
     
     try {
-      const response = await fetch('http://localhost:8000/clean-data', {
+      const response = await fetch('http://161.132.54.35:5050/clean-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

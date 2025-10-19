@@ -70,7 +70,7 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
       formData.append('encoding', encoding);
       formData.append('preview_rows', '1000');
 
-      const response = await fetch('http://localhost:8000/load-csv', {
+      const response = await fetch('http://161.132.54.35:5050/load-csv', {
         method: 'POST',
         body: formData
       });
