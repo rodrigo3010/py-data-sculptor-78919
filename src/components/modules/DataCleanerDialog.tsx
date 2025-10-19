@@ -10,7 +10,6 @@ import { Droplet, Sparkles, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useData } from "@/contexts/DataContext";
-import { supabase } from "@/integrations/supabase/client";
 
 interface DataCleanerDialogProps {
   open: boolean;
@@ -61,34 +60,42 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
     setLoading(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('clean-data', {
-        body: {
+      const response = await fetch('http://localhost:8000/clean-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           operation,
           data: loadedData.rows,
           columns: loadedData.columns,
           params,
-        },
+        }),
       });
 
-      if (error) throw error;
+      const result = await response.json();
 
-      if (data?.success) {
-        setCleanedData(data.data);
+      if (!response.ok) {
+        throw new Error(result.error || 'Error en la limpieza de datos');
+      }
+
+      if (result.success) {
+        setCleanedData(result.data);
         setShowCleaned(true);
         
         // Update the loaded data context
         setLoadedData({
           ...loadedData,
-          rows: data.data,
-          columns: data.columns,
+          rows: result.data,
+          columns: result.columns,
         });
 
         toast({
-          title: "Datos procesados con Pandas y NumPy",
-          description: data.message,
+          title: "Datos procesados con Pandas",
+          description: result.message,
         });
       } else {
-        throw new Error(data?.error || 'Error desconocido');
+        throw new Error(result.error || 'Error desconocido');
       }
     } catch (error: any) {
       console.error('Error cleaning data:', error);

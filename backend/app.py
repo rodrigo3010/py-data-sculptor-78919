@@ -1,10 +1,12 @@
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
+import numpy as np
 from io import StringIO
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import json
 from pydantic import BaseModel
+from supabase_client import supabase
 
 app = FastAPI()
 
@@ -23,7 +25,53 @@ class CSVResponse(BaseModel):
     data: list
     columns: list
     totalRows: int
+    message: Optional[str] = None
     error: Optional[str] = None
+    table_name: Optional[str] = None
+
+
+class CleanDataRequest(BaseModel):
+    operation: str
+    data: List[dict]
+    columns: List[str]
+    params: dict
+
+
+def clean_missing_values(df: pd.DataFrame, params: dict) -> tuple[pd.DataFrame, str]:
+    method = params.get("method", "mean")
+    remove_nulls = params.get("removeNulls", False)
+
+    initial_rows = len(df)
+    initial_nulls = df.isnull().sum().sum()
+
+    if remove_nulls:
+        df = df.dropna()
+
+    numeric_columns = df.select_dtypes(include=[np.number]).columns
+    categorical_columns = df.select_dtypes(exclude=[np.number]).columns
+
+    if method == "mean":
+        df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+    elif method == "median":
+        df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].median())
+    elif method == "mode":
+        for col in df.columns:
+            df[col] = df[col].fillna(
+                df[col].mode()[0] if not df[col].mode().empty else ""
+            )
+    elif method == "forward":
+        df = df.fillna(method="ffill")
+    elif method == "backward":
+        df = df.fillna(method="bfill")
+
+    final_nulls = df.isnull().sum().sum()
+    rows_removed = initial_rows - len(df) if remove_nulls else 0
+
+    message = f"Valores nulos procesados: {initial_nulls - final_nulls} reemplazados"
+    if remove_nulls:
+        message += f", {rows_removed} filas eliminadas"
+
+    return df, message
 
 
 @app.post("/load-csv")
@@ -47,7 +95,11 @@ async def load_csv(
         total_rows = len(df)
 
         return CSVResponse(
-            success=True, data=preview_data, columns=columns, totalRows=total_rows
+            success=True,
+            data=preview_data,
+            columns=columns,
+            totalRows=total_rows,
+            message=f"Archivo CSV cargado exitosamente con {total_rows} filas",
         )
 
     except Exception as e:
@@ -59,6 +111,63 @@ async def load_csv(
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.post("/clean-data")
+async def clean_data(request: CleanDataRequest):
+    try:
+        # Convert input data to DataFrame
+        df = pd.DataFrame(request.data, columns=request.columns)
+        table_name = None
+
+        if request.operation == "missing":
+            df, message = clean_missing_values(df, request.params)
+
+            # Update or create table in Supabase
+            try:
+                table_name = request.params.get("table_name", "cleaned_data")
+                data = df.to_dict("records")
+
+                # First, try to delete existing data if table exists
+                try:
+                    response = supabase.table(table_name).delete().execute()
+                except Exception:
+                    pass  # Table might not exist yet
+
+                # Insert new data
+                response = supabase.table(table_name).insert(data).execute()
+
+                if hasattr(response, "error") and response.error:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Error al guardar en Supabase: {response.error}",
+                    )
+
+                message += (
+                    f"\nDatos actualizados en la tabla '{table_name}' de Supabase"
+                )
+
+            except Exception as e:
+                message += f"\nAdvertencia: No se pudo actualizar Supabase: {str(e)}"
+        else:
+            raise ValueError(f"Operación no soportada: {request.operation}")
+
+        # Convert back to list of dicts for response
+        cleaned_data = df.to_dict("records")
+
+        return CSVResponse(
+            success=True,
+            data=cleaned_data,
+            columns=df.columns.tolist(),
+            totalRows=len(df),
+            message=message,
+            table_name=table_name,
+        )
+
+    except Exception as e:
+        return CSVResponse(
+            success=False, data=[], columns=[], totalRows=0, error=str(e)
+        )
 
 
 if __name__ == "__main__":
