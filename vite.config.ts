@@ -23,4 +23,8 @@ export default defineConfig(({ mode }) => ({
 			"@": path.resolve(__dirname, "./src"),
 		},
 	},
+	base: "/", // Importante para que las rutas funcionen correctamente
+	build: {
+		outDir: "../static", // Si compilas desde una subcarpeta
+	},
 }));
