@@ -1,39 +1,14 @@
 from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 import pandas as pd
 import numpy as np
 from io import StringIO
 from typing import Optional, List, Dict, Any
 import json
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from supabase_client import supabase
-from pathlib import Path
 
 app = FastAPI()
-
-app.mount("/static", StaticFiles(directory="static/"), name="static")
-
-
-# API routes - deben ir ANTES del catch-all
-@app.get("/api/users")
-async def get_users():
-    return {"users": ["Alice", "Bob"]}
-
-
-# Catch-all route para React Router
-# Esto debe ir al FINAL para que no interfiera con tus API routes
-@app.get("/{full_path:path}")
-async def serve_react_app(full_path: str):
-    # Si es un archivo estático específico, intentar servirlo
-    static_file = Path(f"static/{full_path}")
-    if static_file.is_file():
-        return FileResponse(static_file)
-
-    # Para cualquier otra ruta, servir index.html (React Router se encarga)
-    return FileResponse("static/index.html")
-
 
 # Configure CORS
 app.add_middleware(
@@ -198,4 +173,4 @@ async def clean_data(request: CleanDataRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="161.132.54.35", port=5050)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

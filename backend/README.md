@@ -38,7 +38,7 @@ Este backend proporciona servicios para procesar archivos CSV usando Pandas, ofr
    python app.py
    ```
 
-   El servidor estará disponible en `http://161.132.54.35:5050`
+   El servidor estará disponible en `http://localhost:8000`
 
 ## Endpoints API
 
