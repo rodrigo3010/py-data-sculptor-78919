@@ -40,6 +40,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
   const [cleanedData, setCleanedData] = useState<any[]>([]);
   const [imputationMethod, setImputationMethod] = useState("mean");
   const [removeNulls, setRemoveNulls] = useState(false);
+  const [enableImputation, setEnableImputation] = useState(false);
   const [normalizationMethod, setNormalizationMethod] = useState("minmax");
   const [removeOutliers, setRemoveOutliers] = useState(false);
   const [outlierMethod, setOutlierMethod] = useState("iqr");
@@ -182,29 +183,42 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Imputación: Rellenar valores nulos</Label>
-                <p className="text-sm text-muted-foreground">
-                  Sustituye los valores nulos con un valor calculado
-                </p>
-                <Select value={imputationMethod} onValueChange={setImputationMethod}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mean">Media - Para datos numéricos (NumPy)</SelectItem>
-                    <SelectItem value="median">Mediana - Para datos numéricos (NumPy)</SelectItem>
-                    <SelectItem value="mode">Moda - Valor más frecuente (categóricos)</SelectItem>
-                    <SelectItem value="forward">Forward Fill - Propagar último valor válido</SelectItem>
-                    <SelectItem value="backward">Backward Fill - Propagar siguiente valor válido</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label htmlFor="enable-imputation">Imputación: Rellenar valores nulos</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Sustituye los valores nulos con un valor calculado
+                    </p>
+                  </div>
+                  <Switch 
+                    id="enable-imputation" 
+                    checked={enableImputation}
+                    onCheckedChange={setEnableImputation}
+                  />
+                </div>
+
+                {enableImputation && (
+                  <div className="space-y-2">
+                    <Label>Método de imputación</Label>
+                    <Select value={imputationMethod} onValueChange={setImputationMethod}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar método" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mean">Media - Para datos numéricos (NumPy)</SelectItem>
+                        <SelectItem value="median">Mediana - Para datos numéricos (NumPy)</SelectItem>
+                        <SelectItem value="mode">Moda - Valor más frecuente (categóricos)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <Button 
                 className="w-full bg-gradient-secondary"
                 onClick={() => handleClean('missing', {
-                  method: imputationMethod,
+                  method: enableImputation ? imputationMethod : null,
                   removeNulls,
                 })}
                 disabled={loading || !loadedData}

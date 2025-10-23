@@ -85,6 +85,16 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
       if (result.data && result.data.length > 0) {
         setCsvData(result.data);
         setCsvColumns(result.columns);
+        
+        // Set loaded data and enable Table module
+        setLoadedData({
+          tableName: file?.name || "CSV Data",
+          columns: result.columns,
+          rows: result.data,
+          source: "csv",
+        });
+        completeModule('loader');
+        
         toast({
           title: "CSV cargado exitosamente",
           description: `${result.totalRows} filas totales - Mostrando ${result.data.length} filas de previsualización`,
@@ -163,6 +173,16 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
       if (data && data.length > 0) {
         setTableData(data);
         setTableColumns(Object.keys(data[0]));
+        
+        // Set loaded data and enable Table module
+        setLoadedData({
+          tableName: tableName,
+          columns: Object.keys(data[0]),
+          rows: data,
+          source: "database",
+        });
+        completeModule('loader');
+        
         toast({
           title: "Datos cargados",
           description: `${data.length} registros cargados de la tabla ${tableName}`,
