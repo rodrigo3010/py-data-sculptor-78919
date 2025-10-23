@@ -183,17 +183,20 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
               </div>
 
               <div className="space-y-2">
-                <Label>Método de imputación</Label>
+                <Label>Imputación: Rellenar valores nulos</Label>
+                <p className="text-sm text-muted-foreground">
+                  Sustituye los valores nulos con un valor calculado
+                </p>
                 <Select value={imputationMethod} onValueChange={setImputationMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar método" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="mean">Media (NumPy)</SelectItem>
-                    <SelectItem value="median">Mediana (NumPy)</SelectItem>
-                    <SelectItem value="mode">Moda</SelectItem>
-                    <SelectItem value="forward">Forward Fill</SelectItem>
-                    <SelectItem value="backward">Backward Fill</SelectItem>
+                    <SelectItem value="mean">Media - Para datos numéricos (NumPy)</SelectItem>
+                    <SelectItem value="median">Mediana - Para datos numéricos (NumPy)</SelectItem>
+                    <SelectItem value="mode">Moda - Valor más frecuente (categóricos)</SelectItem>
+                    <SelectItem value="forward">Forward Fill - Propagar último valor válido</SelectItem>
+                    <SelectItem value="backward">Backward Fill - Propagar siguiente valor válido</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
