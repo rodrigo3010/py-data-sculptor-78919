@@ -13,18 +13,24 @@ import { useState } from "react";
 interface ModelTrainerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
 }
 
-export const ModelTrainerDialog = ({ open, onOpenChange }: ModelTrainerDialogProps) => {
+import { useData } from "@/contexts/DataContext";
+
+export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrainerDialogProps) => {
   const [epochs, setEpochs] = useState([50]);
   const [testSize, setTestSize] = useState([20]);
   const [isTraining, setIsTraining] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [trainingComplete, setTrainingComplete] = useState(false);
   const { toast } = useToast();
+  const { completeModule } = useData();
 
   const handleTrain = (framework: string, model: string) => {
     setIsTraining(true);
     setProgress(0);
+    setTrainingComplete(false);
     
     toast({
       title: "Iniciando entrenamiento",
@@ -37,6 +43,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange }: ModelTrainerDialogPro
         if (prev >= 100) {
           clearInterval(interval);
           setIsTraining(false);
+          setTrainingComplete(true);
           toast({
             title: "Entrenamiento completo",
             description: "El modelo ha sido entrenado exitosamente",
@@ -312,6 +319,20 @@ export const ModelTrainerDialog = ({ open, onOpenChange }: ModelTrainerDialogPro
             </div>
           </TabsContent>
         </Tabs>
+
+        {trainingComplete && (
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              onClick={() => {
+                completeModule('trainer');
+                onComplete();
+              }}
+              className="bg-gradient-primary"
+            >
+              Siguiente: Ver Resultados →
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

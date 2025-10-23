@@ -14,6 +14,7 @@ import { useData } from "@/contexts/DataContext";
 interface DataCleanerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
 }
 
 const dirtyData = [
@@ -32,9 +33,9 @@ const cleanedData = [
   { id: 5, nombre: "Pedro Sánchez", edad: 36, ciudad: "Bilbao", salario: 55000 },
 ];
 
-export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps) => {
+export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleanerDialogProps) => {
   const { toast } = useToast();
-  const { loadedData, setLoadedData } = useData();
+  const { loadedData, setLoadedData, completeModule } = useData();
   const [showCleaned, setShowCleaned] = useState(false);
   const [cleanedData, setCleanedData] = useState<any[]>([]);
   const [imputationMethod, setImputationMethod] = useState("mean");
@@ -301,6 +302,20 @@ export const DataCleanerDialog = ({ open, onOpenChange }: DataCleanerDialogProps
             </div>
           </TabsContent>
         </Tabs>
+
+        {showCleaned && cleanedData.length > 0 && (
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              onClick={() => {
+                completeModule('cleaner');
+                onComplete();
+              }}
+              className="bg-gradient-primary"
+            >
+              Siguiente: Entrenar Modelos →
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

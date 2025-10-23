@@ -15,12 +15,13 @@ import { createClient } from "@supabase/supabase-js";
 interface DataLoaderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
 }
 
 const SUPABASE_URL = "https://syqvsnlqexyxleuabdvv.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5cXZzbmxxZXh5eGxldWFiZHZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwNDYzNzAsImV4cCI6MjA3NTYyMjM3MH0.fhHO5pYkHSZzM_yxg0MZrRRVPdC1FCZoxvdgOcZrviM";
 
-export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) => {
+export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderDialogProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [csvData, setCsvData] = useState<any[]>([]);
   const [csvColumns, setCsvColumns] = useState<string[]>([]);
@@ -33,7 +34,7 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { setLoadedData } = useData();
+  const { setLoadedData, completeModule } = useData();
 
   const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -397,6 +398,20 @@ export const DataLoaderDialog = ({ open, onOpenChange }: DataLoaderDialogProps) 
             )}
           </TabsContent>
         </Tabs>
+
+        {(csvData.length > 0 || tableData.length > 0) && (
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              onClick={() => {
+                completeModule('loader');
+                onComplete();
+              }}
+              className="bg-gradient-primary"
+            >
+              Siguiente: Limpiar Datos →
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

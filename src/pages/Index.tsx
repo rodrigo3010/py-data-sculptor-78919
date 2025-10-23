@@ -12,7 +12,7 @@ import { useData } from "@/contexts/DataContext";
 const Index = () => {
   const [activeDialog, setActiveDialog] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { loadedData } = useData();
+  const { loadedData, completedModules } = useData();
 
   const modules = [
     {
@@ -21,7 +21,8 @@ const Index = () => {
       description: "Importa archivos CSV o conecta a bases de datos externas",
       icon: Database,
       iconColor: "bg-gradient-primary",
-      completed: false,
+      completed: completedModules.loader,
+      disabled: false,
     },
     {
       id: "cleaner",
@@ -29,7 +30,8 @@ const Index = () => {
       description: "Preprocesa y limpia tus datasets con herramientas avanzadas",
       icon: Droplet,
       iconColor: "bg-gradient-secondary",
-      completed: false,
+      completed: completedModules.cleaner,
+      disabled: !completedModules.loader,
     },
     {
       id: "trainer",
@@ -37,7 +39,8 @@ const Index = () => {
       description: "Configura y entrena modelos con sklearn, PyTorch y más",
       icon: Brain,
       iconColor: "bg-gradient-primary",
-      completed: false,
+      completed: completedModules.trainer,
+      disabled: !completedModules.cleaner,
     },
     {
       id: "results",
@@ -45,7 +48,8 @@ const Index = () => {
       description: "Visualiza métricas, predicciones y análisis de rendimiento",
       icon: BarChart3,
       iconColor: "bg-gradient-secondary",
-      completed: false,
+      completed: completedModules.results,
+      disabled: !completedModules.trainer,
     },
     {
       id: "table",
@@ -127,14 +131,17 @@ const Index = () => {
       <DataLoaderDialog
         open={activeDialog === "loader"}
         onOpenChange={(open) => !open && setActiveDialog(null)}
+        onComplete={() => setActiveDialog("cleaner")}
       />
       <DataCleanerDialog
         open={activeDialog === "cleaner"}
         onOpenChange={(open) => !open && setActiveDialog(null)}
+        onComplete={() => setActiveDialog("trainer")}
       />
       <ModelTrainerDialog
         open={activeDialog === "trainer"}
         onOpenChange={(open) => !open && setActiveDialog(null)}
+        onComplete={() => setActiveDialog("results")}
       />
       <ResultsDialog
         open={activeDialog === "results"}
