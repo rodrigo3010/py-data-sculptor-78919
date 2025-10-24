@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Droplet, Sparkles, Filter } from "lucide-react";
+import { Droplet, Copy, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useData } from "@/contexts/DataContext";
@@ -127,18 +127,27 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
               <Droplet className="h-4 w-4 mr-2" />
               Nulos
             </TabsTrigger>
-            <TabsTrigger value="normalize">
-              <Sparkles className="h-4 w-4 mr-2" />
-              Normalizar
+            <TabsTrigger value="duplicados">
+              <Copy className="h-4 w-4 mr-2" />
+              Duplicados
             </TabsTrigger>
-            <TabsTrigger value="transform">
-              <Filter className="h-4 w-4 mr-2" />
-              Transformar
+            <TabsTrigger value="inconsistencia">
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Inconsistencia
             </TabsTrigger>
           </TabsList>
           
           <TabsContent value="missing" className="space-y-4">
             <div className="space-y-4">
+              <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
+                <h3 className="font-semibold text-sm">❓ 1️⃣ Datos nulos (missing values)</h3>
+                <ul className="text-sm space-y-1 text-muted-foreground">
+                  <li>• Valores faltantes o vacíos en el dataset</li>
+                  <li>• Ejemplo: edad sin valor, ciudad en blanco</li>
+                  <li>• Problema: impide cálculos y puede sesgar resultados</li>
+                </ul>
+              </div>
+
               <div className="space-y-2">
                 <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
                 <div className="border rounded-lg overflow-hidden max-h-64">
@@ -236,77 +245,118 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
             </div>
           </TabsContent>
           
-          <TabsContent value="normalize" className="space-y-4">
+          <TabsContent value="duplicados" className="space-y-4">
             <div className="space-y-4">
+              <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
+                <h3 className="font-semibold text-sm">🧬 2️⃣ Datos duplicados</h3>
+                <ul className="text-sm space-y-1 text-muted-foreground">
+                  <li>• Registros repetidos total o parcialmente</li>
+                  <li>• Ejemplo: dos filas con el mismo nombre y director</li>
+                  <li>• Problema: altera conteos, promedios y relaciones</li>
+                </ul>
+              </div>
+
               <div className="space-y-2">
-                <Label>Método de normalización</Label>
-                <Select value={normalizationMethod} onValueChange={setNormalizationMethod}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minmax">Min-Max Scaling (0-1)</SelectItem>
-                    <SelectItem value="standard">Standardization (Z-score)</SelectItem>
-                    <SelectItem value="robust">Robust Scaler</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
+                <div className="border rounded-lg overflow-hidden max-h-64">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {displayColumns.map((col) => (
+                          <TableHead key={col}>{col}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {displayData.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {displayColumns.map((col) => (
+                            <TableCell key={col}>
+                              {row[col] === null || row[col] === undefined || row[col] === '' ? (
+                                <Badge variant="destructive">NULL</Badge>
+                              ) : (
+                                String(row[col])
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
               <div className="flex items-center justify-between">
-                <Label htmlFor="remove-outliers">Detectar y remover outliers (NumPy)</Label>
+                <Label htmlFor="remove-duplicates">Eliminar filas duplicadas</Label>
                 <Switch 
-                  id="remove-outliers"
+                  id="remove-duplicates"
                   checked={removeOutliers}
                   onCheckedChange={setRemoveOutliers}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Método de detección de outliers</Label>
-                <Select value={outlierMethod} onValueChange={setOutlierMethod}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="iqr">IQR (Rango Intercuartil)</SelectItem>
-                    <SelectItem value="zscore">Z-Score</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               <Button 
                 className="w-full bg-gradient-secondary"
                 onClick={() => handleClean('normalize', {
-                  method: normalizationMethod,
-                  removeOutliers,
-                  outlierMethod,
+                  removeDuplicates: removeOutliers,
                 })}
                 disabled={loading || !loadedData}
               >
-                {loading ? "Procesando con Pandas..." : "Aplicar Normalización"}
+                {loading ? "Procesando con Pandas..." : "Aplicar Limpieza de Duplicados"}
               </Button>
             </div>
           </TabsContent>
           
-          <TabsContent value="transform" className="space-y-4">
+          <TabsContent value="inconsistencia" className="space-y-4">
             <div className="space-y-4">
+              <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
+                <h3 className="font-semibold text-sm">⚠️ 3️⃣ Datos inconsistentes</h3>
+                <p className="text-sm text-muted-foreground">Mismo tipo de dato pero escrito diferente.</p>
+                <ul className="text-sm space-y-1 text-muted-foreground">
+                  <li>• Ejemplo: "Acción", "accion", "ACCIÓN"</li>
+                  <li>• "2020", "20O0" (letra O en vez de número 0)</li>
+                  <li>• Problema: dificulta análisis y agrupaciones</li>
+                </ul>
+              </div>
+
               <div className="space-y-2">
-                <Label>Encoding de variables categóricas</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="onehot">One-Hot Encoding</SelectItem>
-                    <SelectItem value="label">Label Encoding</SelectItem>
-                    <SelectItem value="ordinal">Ordinal Encoding</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
+                <div className="border rounded-lg overflow-hidden max-h-64">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {displayColumns.map((col) => (
+                          <TableHead key={col}>{col}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {displayData.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {displayColumns.map((col) => (
+                            <TableCell key={col}>
+                              {row[col] === null || row[col] === undefined || row[col] === '' ? (
+                                <Badge variant="destructive">NULL</Badge>
+                              ) : (
+                                String(row[col])
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
               <div className="flex items-center justify-between">
-                <Label htmlFor="log-transform">Transformación logarítmica</Label>
-                <Switch id="log-transform" />
+                <Label htmlFor="normalize-text">Normalizar texto (convertir a minúsculas)</Label>
+                <Switch id="normalize-text" />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="trim-spaces">Eliminar espacios en blanco extra</Label>
+                <Switch id="trim-spaces" />
               </div>
 
               <Button 
@@ -314,7 +364,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                 onClick={() => handleClean('transform', {})}
                 disabled={loading || !loadedData}
               >
-                {loading ? "Procesando con Pandas..." : "Aplicar Transformaciones"}
+                {loading ? "Procesando con Pandas..." : "Aplicar Corrección de Inconsistencias"}
               </Button>
             </div>
           </TabsContent>
