@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Upload, Database, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/DataContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { createClient } from "@supabase/supabase-js";
 
 interface DataLoaderDialogProps {
@@ -213,6 +215,60 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
     loadTableData(tableName);
   };
 
+  const calculateNulls = (data: any[]) => {
+    if (!data || data.length === 0) return 0;
+    let nullCount = 0;
+    data.forEach(row => {
+      Object.values(row).forEach(value => {
+        if (value === null || value === undefined || value === '') {
+          nullCount++;
+        }
+      });
+    });
+    return nullCount;
+  };
+
+  const calculateDuplicates = (data: any[]) => {
+    if (!data || data.length === 0) return 0;
+    const seen = new Set();
+    let duplicates = 0;
+    data.forEach(row => {
+      const rowString = JSON.stringify(row);
+      if (seen.has(rowString)) {
+        duplicates++;
+      } else {
+        seen.add(rowString);
+      }
+    });
+    return duplicates;
+  };
+
+  const calculateInconsistencies = (data: any[], columns: string[]) => {
+    if (!data || data.length === 0) return 0;
+    let inconsistencies = 0;
+    
+    columns.forEach(column => {
+      const values = data.map(row => row[column]).filter(v => v !== null && v !== undefined && v !== '');
+      const valueMap = new Map<string, string[]>();
+      
+      values.forEach(value => {
+        const normalized = String(value).toLowerCase().trim();
+        if (!valueMap.has(normalized)) {
+          valueMap.set(normalized, []);
+        }
+        valueMap.get(normalized)!.push(String(value));
+      });
+      
+      valueMap.forEach(variants => {
+        if (variants.length > 1 && new Set(variants).size > 1) {
+          inconsistencies += variants.length - 1;
+        }
+      });
+    });
+    
+    return inconsistencies;
+  };
+
   const handleViewFullTable = (source: "csv" | "database") => {
     if (source === "csv" && csvData.length > 0) {
       setLoadedData({
@@ -310,7 +366,37 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
             </Button>
 
             {csvData.length > 0 && (
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-4">
+                <Alert className="bg-primary/5 border-primary/20">
+                  <AlertDescription>
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm mb-3">📊 Resumen de Datos</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Filas:</span>
+                          <Badge variant="secondary">{csvData.length}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Columnas:</span>
+                          <Badge variant="secondary">{csvColumns.length}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Nulos:</span>
+                          <Badge variant="destructive">{calculateNulls(csvData)}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Duplicados:</span>
+                          <Badge variant="destructive">{calculateDuplicates(csvData)}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between col-span-2">
+                          <span className="text-muted-foreground">Inconsistencias:</span>
+                          <Badge variant="destructive">{calculateInconsistencies(csvData, csvColumns)}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+                
                 <Label>Vista previa de datos cargados</Label>
                 <div className="border rounded-lg overflow-auto max-h-96">
                   <Table>
@@ -369,7 +455,37 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
             </div>
 
             {selectedTable && tableData.length > 0 && (
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-4">
+                <Alert className="bg-primary/5 border-primary/20">
+                  <AlertDescription>
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm mb-3">📊 Resumen de Datos</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Filas:</span>
+                          <Badge variant="secondary">{tableData.length}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Columnas:</span>
+                          <Badge variant="secondary">{tableColumns.length}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Nulos:</span>
+                          <Badge variant="destructive">{calculateNulls(tableData)}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Duplicados:</span>
+                          <Badge variant="destructive">{calculateDuplicates(tableData)}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between col-span-2">
+                          <span className="text-muted-foreground">Inconsistencias:</span>
+                          <Badge variant="destructive">{calculateInconsistencies(tableData, tableColumns)}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+                
                 <Label>Datos de la tabla: {selectedTable}</Label>
                 <div className="border rounded-lg overflow-auto max-h-96">
                   <Table>
