@@ -17,6 +17,8 @@ interface DataContextType {
     results: boolean;
   };
   completeModule: (module: "loader" | "cleaner" | "trainer" | "results") => void;
+  developerMode: boolean;
+  toggleDeveloperMode: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -29,13 +31,18 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     trainer: false,
     results: false,
   });
+  const [developerMode, setDeveloperMode] = useState(false);
 
   const completeModule = (module: "loader" | "cleaner" | "trainer" | "results") => {
     setCompletedModules(prev => ({ ...prev, [module]: true }));
   };
 
+  const toggleDeveloperMode = () => {
+    setDeveloperMode(prev => !prev);
+  };
+
   return (
-    <DataContext.Provider value={{ loadedData, setLoadedData, completedModules, completeModule }}>
+    <DataContext.Provider value={{ loadedData, setLoadedData, completedModules, completeModule, developerMode, toggleDeveloperMode }}>
       {children}
     </DataContext.Provider>
   );

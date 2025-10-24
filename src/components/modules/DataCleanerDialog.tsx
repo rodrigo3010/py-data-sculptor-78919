@@ -49,6 +49,52 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
   const displayData = showCleaned ? cleanedData : (loadedData?.rows.slice(0, 5) || dirtyData);
   const displayColumns = loadedData?.columns || ["id", "nombre", "edad", "ciudad", "salario"];
 
+  // Calculate statistics
+  const calculateNulls = () => {
+    if (!loadedData) return 0;
+    let nullCount = 0;
+    loadedData.rows.forEach(row => {
+      loadedData.columns.forEach(col => {
+        if (row[col] === null || row[col] === undefined || row[col] === '') {
+          nullCount++;
+        }
+      });
+    });
+    return nullCount;
+  };
+
+  const calculateDuplicates = () => {
+    if (!loadedData) return 0;
+    const seen = new Set();
+    let duplicates = 0;
+    loadedData.rows.forEach(row => {
+      const rowString = JSON.stringify(row);
+      if (seen.has(rowString)) {
+        duplicates++;
+      } else {
+        seen.add(rowString);
+      }
+    });
+    return duplicates;
+  };
+
+  const calculateInconsistencies = () => {
+    if (!loadedData) return 0;
+    let inconsistencies = 0;
+    loadedData.rows.forEach(row => {
+      loadedData.columns.forEach(col => {
+        const value = row[col];
+        if (typeof value === 'string') {
+          // Check for mixed case or extra spaces
+          if (value !== value.trim() || (value.toLowerCase() !== value && value.toUpperCase() !== value)) {
+            inconsistencies++;
+          }
+        }
+      });
+    });
+    return inconsistencies;
+  };
+
   const handleClean = async (operation: 'missing' | 'normalize' | 'transform', params: any = {}) => {
     if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
       toast({
@@ -140,7 +186,14 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
           <TabsContent value="missing" className="space-y-4">
             <div className="space-y-4">
               <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
-                <h3 className="font-semibold text-sm">❓ 1️⃣ Datos nulos (missing values)</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">❓ 1️⃣ Datos nulos (missing values)</h3>
+                  {loadedData && (
+                    <Badge variant="destructive" className="text-xs">
+                      {calculateNulls()} valores nulos
+                    </Badge>
+                  )}
+                </div>
                 <ul className="text-sm space-y-1 text-muted-foreground">
                   <li>• Valores faltantes o vacíos en el dataset</li>
                   <li>• Ejemplo: edad sin valor, ciudad en blanco</li>
@@ -248,7 +301,14 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
           <TabsContent value="duplicados" className="space-y-4">
             <div className="space-y-4">
               <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
-                <h3 className="font-semibold text-sm">🧬 2️⃣ Datos duplicados</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">🧬 2️⃣ Datos duplicados</h3>
+                  {loadedData && (
+                    <Badge variant="destructive" className="text-xs">
+                      {calculateDuplicates()} filas duplicadas
+                    </Badge>
+                  )}
+                </div>
                 <ul className="text-sm space-y-1 text-muted-foreground">
                   <li>• Registros repetidos total o parcialmente</li>
                   <li>• Ejemplo: dos filas con el mismo nombre y director</li>
@@ -310,7 +370,14 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
           <TabsContent value="inconsistencia" className="space-y-4">
             <div className="space-y-4">
               <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
-                <h3 className="font-semibold text-sm">⚠️ 3️⃣ Datos inconsistentes</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">⚠️ 3️⃣ Datos inconsistentes</h3>
+                  {loadedData && (
+                    <Badge variant="destructive" className="text-xs">
+                      {calculateInconsistencies()} inconsistencias
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">Mismo tipo de dato pero escrito diferente.</p>
                 <ul className="text-sm space-y-1 text-muted-foreground">
                   <li>• Ejemplo: "Acción", "accion", "ACCIÓN"</li>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Database, Droplet, Brain, BarChart3, Table } from "lucide-react";
+import { Database, Droplet, Brain, BarChart3, Table, Code } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ModuleCard } from "@/components/ModuleCard";
 import { DataLoaderDialog } from "@/components/modules/DataLoaderDialog";
@@ -7,12 +7,13 @@ import { DataCleanerDialog } from "@/components/modules/DataCleanerDialog";
 import { ModelTrainerDialog } from "@/components/modules/ModelTrainerDialog";
 import { ResultsDialog } from "@/components/modules/ResultsDialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useData } from "@/contexts/DataContext";
 
 const Index = () => {
   const [activeDialog, setActiveDialog] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { loadedData, completedModules } = useData();
+  const { loadedData, completedModules, developerMode, toggleDeveloperMode } = useData();
 
   const modules = [
     {
@@ -31,7 +32,7 @@ const Index = () => {
       icon: Droplet,
       iconColor: "bg-gradient-secondary",
       completed: completedModules.cleaner,
-      disabled: !completedModules.loader,
+      disabled: !developerMode && !completedModules.loader,
     },
     {
       id: "trainer",
@@ -40,7 +41,7 @@ const Index = () => {
       icon: Brain,
       iconColor: "bg-gradient-primary",
       completed: completedModules.trainer,
-      disabled: !completedModules.cleaner,
+      disabled: !developerMode && !completedModules.cleaner,
     },
     {
       id: "results",
@@ -49,7 +50,7 @@ const Index = () => {
       icon: BarChart3,
       iconColor: "bg-gradient-secondary",
       completed: completedModules.results,
-      disabled: !completedModules.trainer,
+      disabled: !developerMode && !completedModules.trainer,
     },
     {
       id: "table",
@@ -67,13 +68,27 @@ const Index = () => {
       {/* Header */}
       <header className="border-b">
         <div className="container mx-auto px-4 py-6">
-          <div className="text-center space-y-2">
-            <h1 className="text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              ML Data Pipeline
-            </h1>
-            <p className="text-lg text-muted-foreground">
-              Sistema completo para procesamiento de datos y machine learning
-            </p>
+          <div className="flex items-center justify-between">
+            <div className="flex-1" />
+            <div className="text-center space-y-2">
+              <h1 className="text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                ML Data Pipeline
+              </h1>
+              <p className="text-lg text-muted-foreground">
+                Sistema completo para procesamiento de datos y machine learning
+              </p>
+            </div>
+            <div className="flex-1 flex justify-end">
+              <Button
+                variant={developerMode ? "default" : "outline"}
+                size="sm"
+                onClick={toggleDeveloperMode}
+                className="gap-2"
+              >
+                <Code className="h-4 w-4" />
+                Modo Dev
+              </Button>
+            </div>
           </div>
         </div>
       </header>
