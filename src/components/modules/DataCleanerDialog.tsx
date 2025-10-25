@@ -106,9 +106,9 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
     }
 
     setLoading(true);
-    
+
     try {
-      const response = await fetch('http://161.132.54.35:5050/clean-data', {
+      const response = await fetch('/clean-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,7 +130,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
       if (result.success) {
         setCleanedData(result.data);
         setShowCleaned(true);
-        
+
         // Update the loaded data context
         setLoadedData({
           ...loadedData,
@@ -166,7 +166,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
             Preprocesa y limpia tus datasets con herramientas avanzadas de Pandas y NumPy
           </DialogDescription>
         </DialogHeader>
-        
+
         <Tabs defaultValue="missing" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="missing">
@@ -182,7 +182,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
               Inconsistencia
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="missing" className="space-y-4">
             <div className="space-y-4">
               <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
@@ -235,11 +235,11 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                   </p>
                 )}
               </div>
-              
+
               <div className="flex items-center justify-between">
                 <Label htmlFor="remove-nulls">Eliminar filas con valores nulos</Label>
-                <Switch 
-                  id="remove-nulls" 
+                <Switch
+                  id="remove-nulls"
                   checked={removeNulls}
                   onCheckedChange={setRemoveNulls}
                 />
@@ -253,8 +253,8 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                       Sustituye los valores nulos con un valor calculado
                     </p>
                   </div>
-                  <Switch 
-                    id="enable-imputation" 
+                  <Switch
+                    id="enable-imputation"
                     checked={enableImputation}
                     onCheckedChange={setEnableImputation}
                   />
@@ -277,7 +277,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                 )}
               </div>
 
-              <Button 
+              <Button
                 className="w-full bg-gradient-secondary"
                 onClick={() => handleClean('missing', {
                   method: enableImputation ? imputationMethod : null,
@@ -297,7 +297,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
               )}
             </div>
           </TabsContent>
-          
+
           <TabsContent value="duplicados" className="space-y-4">
             <div className="space-y-4">
               <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
@@ -348,14 +348,14 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="remove-duplicates">Eliminar filas duplicadas</Label>
-                <Switch 
+                <Switch
                   id="remove-duplicates"
                   checked={removeOutliers}
                   onCheckedChange={setRemoveOutliers}
                 />
               </div>
 
-              <Button 
+              <Button
                 className="w-full bg-gradient-secondary"
                 onClick={() => handleClean('normalize', {
                   removeDuplicates: removeOutliers,
@@ -366,7 +366,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
               </Button>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="inconsistencia" className="space-y-4">
             <div className="space-y-4">
               <div className="p-4 bg-muted/50 border rounded-lg space-y-2">
@@ -426,7 +426,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                 <Switch id="trim-spaces" />
               </div>
 
-              <Button 
+              <Button
                 className="w-full bg-gradient-secondary"
                 onClick={() => handleClean('transform', {})}
                 disabled={loading || !loadedData}

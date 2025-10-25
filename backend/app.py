@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import pandas as pd
 import numpy as np
 from io import StringIO
@@ -7,6 +9,7 @@ from typing import Optional, List, Dict, Any
 import json
 from pydantic import BaseModel
 from supabase_client import supabase
+from pathlib import Path
 
 app = FastAPI()
 

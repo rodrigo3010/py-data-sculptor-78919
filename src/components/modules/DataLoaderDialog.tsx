@@ -73,7 +73,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
       formData.append('encoding', encoding);
       formData.append('preview_rows', '1000');
 
-      const response = await fetch('localhost:5050/load-csv', {
+      const response = await fetch('/load-csv', {
         method: 'POST',
         body: formData
       });
@@ -87,7 +87,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
       if (result.data && result.data.length > 0) {
         setCsvData(result.data);
         setCsvColumns(result.columns);
-        
+
         // Set loaded data and enable Table module
         setLoadedData({
           tableName: file?.name || "CSV Data",
@@ -96,7 +96,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
           source: "csv",
         });
         completeModule('loader');
-        
+
         toast({
           title: "CSV cargado exitosamente",
           description: `${result.totalRows} filas totales - Mostrando ${result.data.length} filas de previsualización`,
@@ -175,7 +175,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
       if (data && data.length > 0) {
         setTableData(data);
         setTableColumns(Object.keys(data[0]));
-        
+
         // Set loaded data and enable Table module
         setLoadedData({
           tableName: tableName,
@@ -184,7 +184,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
           source: "database",
         });
         completeModule('loader');
-        
+
         toast({
           title: "Datos cargados",
           description: `${data.length} registros cargados de la tabla ${tableName}`,
@@ -246,11 +246,11 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
   const calculateInconsistencies = (data: any[], columns: string[]) => {
     if (!data || data.length === 0) return 0;
     let inconsistencies = 0;
-    
+
     columns.forEach(column => {
       const values = data.map(row => row[column]).filter(v => v !== null && v !== undefined && v !== '');
       const valueMap = new Map<string, string[]>();
-      
+
       values.forEach(value => {
         const normalized = String(value).toLowerCase().trim();
         if (!valueMap.has(normalized)) {
@@ -258,14 +258,14 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
         }
         valueMap.get(normalized)!.push(String(value));
       });
-      
+
       valueMap.forEach(variants => {
         if (variants.length > 1 && new Set(variants).size > 1) {
           inconsistencies += variants.length - 1;
         }
       });
     });
-    
+
     return inconsistencies;
   };
 
@@ -396,7 +396,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
                     </div>
                   </AlertDescription>
                 </Alert>
-                
+
                 <Label>Vista previa de datos cargados</Label>
                 <div className="border rounded-lg overflow-auto max-h-96">
                   <Table>
@@ -485,7 +485,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
                     </div>
                   </AlertDescription>
                 </Alert>
-                
+
                 <Label>Datos de la tabla: {selectedTable}</Label>
                 <div className="border rounded-lg overflow-auto max-h-96">
                   <Table>
