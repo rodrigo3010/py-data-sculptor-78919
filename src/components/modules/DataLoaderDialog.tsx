@@ -64,7 +64,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
     }
 
     setLoading(true);
-    
+
     try {
       // Use Python backend for processing
       const formData = new FormData();
@@ -73,7 +73,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
       formData.append('encoding', encoding);
       formData.append('preview_rows', '1000');
 
-      const response = await fetch('http://161.132.54.35:5050/load-csv', {
+      const response = await fetch('localhost:5050/load-csv', {
         method: 'POST',
         body: formData
       });
@@ -130,7 +130,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
     try {
       setLoading(true);
       const { data, error } = await supabaseClient.rpc('get_table_names');
-      
+
       if (error) {
         console.error("Error loading tables:", error);
         toast({
@@ -300,7 +300,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
             Importa archivos CSV o conecta a bases de datos externas
           </DialogDescription>
         </DialogHeader>
-        
+
         <Tabs defaultValue="csv" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="csv">
@@ -312,7 +312,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
               Base de Datos
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="csv" className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="file">Seleccionar archivo CSV</Label>
@@ -328,7 +328,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
                 </p>
               )}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="delimiter">Delimitador</Label>
               <Select value={delimiter} onValueChange={setDelimiter}>
@@ -357,7 +357,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
               </Select>
             </div>
 
-            <Button 
+            <Button
               className="w-full bg-gradient-primary"
               onClick={loadCSVData}
               disabled={!file || loading}
@@ -436,7 +436,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
               </div>
             )}
           </TabsContent>
-          
+
           <TabsContent value="database" className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="table-select">Seleccionar Tabla</Label>
@@ -501,8 +501,8 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
                         <TableRow key={idx}>
                           {tableColumns.map((column) => (
                             <TableCell key={column}>
-                              {typeof row[column] === 'object' 
-                                ? JSON.stringify(row[column]) 
+                              {typeof row[column] === 'object'
+                                ? JSON.stringify(row[column])
                                 : String(row[column] ?? '')}
                             </TableCell>
                           ))}
