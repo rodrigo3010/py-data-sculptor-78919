@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
 import numpy as np
@@ -10,6 +10,9 @@ import json
 from pydantic import BaseModel
 from supabase_client import supabase
 from pathlib import Path
+from ml_sklearn_service import SklearnModelTrainer
+from ml_pytorch_service import PyTorchModelTrainer
+from visualization_service import VisualizationService
 
 app = FastAPI()
 
@@ -54,6 +57,37 @@ class CleanDataRequest(BaseModel):
     data: List[dict]
     columns: List[str]
     params: dict
+
+
+class TrainModelRequest(BaseModel):
+    framework: str  # "sklearn" or "pytorch"
+    data: List[dict]
+    columns: List[str]
+    target_column: str
+    model_type: str
+    task_type: str = "classification"  # "classification" or "regression"
+    test_size: float = 0.2
+    # Sklearn specific
+    cv_folds: Optional[int] = 5
+    optimize_hyperparams: Optional[str] = None
+    metric: Optional[str] = "accuracy"
+    # PyTorch specific
+    architecture: Optional[str] = "mlp"
+    hidden_layers: Optional[int] = 3
+    neurons_per_layer: Optional[int] = 128
+    activation: Optional[str] = "relu"
+    optimizer: Optional[str] = "adam"
+    learning_rate: Optional[float] = 0.001
+    epochs: Optional[int] = 50
+    batch_size: Optional[int] = 32
+    loss_function: Optional[str] = "cross_entropy"
+
+
+class PredictRequest(BaseModel):
+    framework: str
+    data: List[dict]
+    columns: List[str]
+    model_name: str
 
 
 def clean_missing_values(df: pd.DataFrame, params: dict) -> tuple[pd.DataFrame, str]:
@@ -187,6 +221,206 @@ async def clean_data(request: CleanDataRequest):
         return CSVResponse(
             success=False, data=[], columns=[], totalRows=0, error=str(e)
         )
+
+
+# Global instances for ML services
+sklearn_trainer = None
+pytorch_trainer = None
+viz_service = VisualizationService()
+
+
+@app.post("/train-model")
+async def train_model(request: TrainModelRequest):
+    """Train a machine learning model with sklearn or PyTorch"""
+    global sklearn_trainer, pytorch_trainer
+    
+    try:
+        # Convert data to DataFrame
+        df = pd.DataFrame(request.data, columns=request.columns)
+        
+        # Validate target column
+        if request.target_column not in df.columns:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Target column '{request.target_column}' not found in data"
+            )
+        
+        results = {}
+        
+        if request.framework == "sklearn":
+            # Train with scikit-learn
+            sklearn_trainer = SklearnModelTrainer()
+            
+            metrics = sklearn_trainer.train(
+                df=df,
+                target_column=request.target_column,
+                model_type=request.model_type,
+                task_type=request.task_type,
+                test_size=request.test_size,
+                cv_folds=request.cv_folds,
+                optimize_hyperparams=request.optimize_hyperparams
+            )
+            
+            results = {
+                "success": True,
+                "framework": "sklearn",
+                "metrics": metrics,
+                "message": f"Modelo {request.model_type} entrenado exitosamente"
+            }
+            
+            # Generate visualizations
+            plots = viz_service.generate_all_plots(metrics, framework="sklearn")
+            results["plots"] = plots
+            
+        elif request.framework == "pytorch":
+            # Train with PyTorch
+            pytorch_trainer = PyTorchModelTrainer()
+            
+            training_results = pytorch_trainer.train(
+                df=df,
+                target_column=request.target_column,
+                architecture=request.architecture,
+                hidden_layers=request.hidden_layers,
+                neurons_per_layer=request.neurons_per_layer,
+                activation=request.activation,
+                optimizer_name=request.optimizer,
+                learning_rate=request.learning_rate,
+                epochs=request.epochs,
+                batch_size=request.batch_size,
+                loss_function=request.loss_function,
+                test_size=request.test_size
+            )
+            
+            results = {
+                "success": True,
+                "framework": "pytorch",
+                "metrics": training_results["test_metrics"],
+                "training_history": training_results["training_history"],
+                "training_time": training_results["training_time"],
+                "model_parameters": training_results["model_parameters"],
+                "message": f"Red neuronal {request.architecture} entrenada exitosamente"
+            }
+            
+            # Generate visualizations
+            plots = viz_service.generate_all_plots(training_results, framework="pytorch")
+            results["plots"] = plots
+            
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Framework '{request.framework}' no soportado"
+            )
+        
+        return JSONResponse(content=results)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/predictions")
+async def get_predictions(n_samples: int = 10):
+    """Get sample predictions from the last trained model"""
+    global sklearn_trainer, pytorch_trainer
+    
+    try:
+        if sklearn_trainer is not None:
+            predictions = sklearn_trainer.get_predictions_sample(n_samples)
+            predictions["framework"] = "sklearn"
+            predictions["is_classification"] = sklearn_trainer.is_classification
+            return JSONResponse(content=predictions)
+            
+        elif pytorch_trainer is not None:
+            predictions = pytorch_trainer.get_predictions_sample(n_samples)
+            predictions["framework"] = "pytorch"
+            predictions["is_classification"] = pytorch_trainer.is_classification
+            return JSONResponse(content=predictions)
+            
+        else:
+            return JSONResponse(content={
+                "predictions": [],
+                "message": "No model trained yet"
+            })
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/predict")
+async def predict(request: PredictRequest):
+    """Make predictions with a trained model"""
+    global sklearn_trainer, pytorch_trainer
+    
+    try:
+        # Convert data to DataFrame
+        df = pd.DataFrame(request.data, columns=request.columns)
+        
+        if request.framework == "sklearn":
+            if sklearn_trainer is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No sklearn model trained"
+                )
+            
+            predictions = sklearn_trainer.predict(df.values)
+            
+        elif request.framework == "pytorch":
+            if pytorch_trainer is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No PyTorch model trained"
+                )
+            
+            predictions = pytorch_trainer.predict(df.values)
+            
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Framework '{request.framework}' no soportado"
+            )
+        
+        return JSONResponse(content={
+            "success": True,
+            "predictions": predictions.tolist()
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/save-model")
+async def save_model(framework: str, model_name: str):
+    """Save the trained model"""
+    global sklearn_trainer, pytorch_trainer
+    
+    try:
+        if framework == "sklearn":
+            if sklearn_trainer is None:
+                raise HTTPException(status_code=400, detail="No sklearn model to save")
+            
+            model_path = sklearn_trainer.save_model(model_name)
+            
+        elif framework == "pytorch":
+            if pytorch_trainer is None:
+                raise HTTPException(status_code=400, detail="No PyTorch model to save")
+            
+            model_path = pytorch_trainer.save_model(model_name)
+            
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Framework '{framework}' no soportado"
+            )
+        
+        return JSONResponse(content={
+            "success": True,
+            "model_path": model_path,
+            "message": f"Modelo guardado exitosamente en {model_path}"
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

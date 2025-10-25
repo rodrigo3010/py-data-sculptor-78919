@@ -5,6 +5,10 @@ import { BarChart3, LineChart, TrendingUp, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LineChart as RechartsLine, Line, BarChart as RechartsBar, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { useData } from "@/contexts/DataContext";
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { useToast } from "@/hooks/use-toast";
 
 interface ResultsDialogProps {
   open: boolean;
@@ -12,39 +16,117 @@ interface ResultsDialogProps {
 }
 
 export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
-  const metrics = [
-    { name: "Accuracy", value: "94.3%", trend: "+2.1%" },
-    { name: "Precision", value: "92.8%", trend: "+1.5%" },
-    { name: "Recall", value: "91.2%", trend: "+0.8%" },
-    { name: "F1-Score", value: "92.0%", trend: "+1.2%" },
-  ];
+  const { trainingResults } = useData();
+  const { toast } = useToast();
+  const [predictions, setPredictions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (open && trainingResults) {
+      fetchPredictions();
+    }
+  }, [open, trainingResults]);
 
-  const learningCurveData = [
-    { epoch: 0, training: 0.85, validation: 0.82 },
-    { epoch: 10, training: 0.88, validation: 0.84 },
-    { epoch: 20, training: 0.91, validation: 0.87 },
-    { epoch: 30, training: 0.93, validation: 0.90 },
-    { epoch: 40, training: 0.94, validation: 0.92 },
-    { epoch: 50, training: 0.95, validation: 0.93 },
-  ];
+  const fetchPredictions = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get("/predictions?n_samples=10");
+      setPredictions(response.data.predictions || []);
+    } catch (error: any) {
+      console.error("Error fetching predictions:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const featureImportanceData = [
-    { feature: "Feature 1", importance: 85 },
-    { feature: "Feature 2", importance: 72 },
-    { feature: "Feature 3", importance: 64 },
-    { feature: "Feature 4", importance: 51 },
-    { feature: "Feature 5", importance: 43 },
-  ];
+  const handleSaveModel = async () => {
+    if (!trainingResults) return;
+    
+    try {
+      const modelName = `model_${Date.now()}`;
+      const response = await axios.post(`/save-model?framework=${trainingResults.framework}&model_name=${modelName}`);
+      
+      toast({
+        title: "Modelo guardado",
+        description: response.data.message,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Error al guardar el modelo",
+        variant: "destructive",
+      });
+    }
+  };
 
-  const rocData = [
-    { fpr: 0, tpr: 0 },
-    { fpr: 0.1, tpr: 0.65 },
-    { fpr: 0.2, tpr: 0.82 },
-    { fpr: 0.3, tpr: 0.90 },
-    { fpr: 0.4, tpr: 0.94 },
-    { fpr: 0.5, tpr: 0.96 },
-    { fpr: 1, tpr: 1 },
-  ];
+  if (!trainingResults) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resultados del Modelo</DialogTitle>
+            <DialogDescription>
+              No hay resultados de entrenamiento disponibles
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const metrics = trainingResults.metrics || {};
+  const isClassification = metrics.test_accuracy !== undefined;
+  
+  const metricsDisplay = [
+    { 
+      name: "Accuracy", 
+      value: metrics.test_accuracy ? `${(metrics.test_accuracy * 100).toFixed(1)}%` : "N/A",
+      visible: isClassification
+    },
+    { 
+      name: "Precision", 
+      value: metrics.precision ? `${(metrics.precision * 100).toFixed(1)}%` : "N/A",
+      visible: isClassification
+    },
+    { 
+      name: "Recall", 
+      value: metrics.recall ? `${(metrics.recall * 100).toFixed(1)}%` : "N/A",
+      visible: isClassification
+    },
+    { 
+      name: "F1-Score", 
+      value: metrics.f1_score ? `${(metrics.f1_score * 100).toFixed(1)}%` : "N/A",
+      visible: isClassification
+    },
+    { 
+      name: "R² Score", 
+      value: metrics.test_r2 ? metrics.test_r2.toFixed(3) : "N/A",
+      visible: !isClassification
+    },
+    { 
+      name: "RMSE", 
+      value: metrics.test_rmse ? metrics.test_rmse.toFixed(3) : "N/A",
+      visible: !isClassification
+    },
+  ].filter(m => m.visible);
+
+  const learningCurveData = trainingResults.training_history ? 
+    trainingResults.training_history.epochs.map((epoch: number, idx: number) => ({
+      epoch,
+      training: trainingResults.training_history.train_acc[idx],
+      validation: trainingResults.training_history.val_acc[idx]
+    })) : [];
+
+  const featureImportanceData = metrics.feature_importance ? 
+    metrics.feature_importance.slice(0, 10).map((item: any) => ({
+      feature: item.feature,
+      importance: (item.importance * 100).toFixed(1)
+    })) : [];
+
+  const rocData = metrics.roc_curve ? 
+    metrics.roc_curve.fpr.map((fpr: number, idx: number) => ({
+      fpr,
+      tpr: metrics.roc_curve.tpr[idx]
+    })) : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -74,7 +156,7 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
           
           <TabsContent value="metrics" className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              {metrics.map((metric) => (
+              {metricsDisplay.map((metric) => (
                 <Card key={metric.name}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -84,60 +166,69 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
                   <CardContent>
                     <div className="flex items-baseline justify-between">
                       <div className="text-3xl font-bold">{metric.value}</div>
-                      <Badge variant="outline" className="text-success">
-                        {metric.trend}
-                      </Badge>
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Matriz de Confusión</CardTitle>
-                <CardDescription>Evaluación del clasificador</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 max-w-md">
-                  <div className="p-4 bg-success/10 border-2 border-success/20 rounded-lg text-center">
-                    <div className="text-2xl font-bold">850</div>
-                    <div className="text-xs text-muted-foreground">True Positives</div>
-                  </div>
-                  <div className="p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg text-center">
-                    <div className="text-2xl font-bold">42</div>
-                    <div className="text-xs text-muted-foreground">False Positives</div>
-                  </div>
-                  <div className="p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg text-center">
-                    <div className="text-2xl font-bold">38</div>
-                    <div className="text-xs text-muted-foreground">False Negatives</div>
-                  </div>
-                  <div className="p-4 bg-success/10 border-2 border-success/20 rounded-lg text-center">
-                    <div className="text-2xl font-bold">870</div>
-                    <div className="text-xs text-muted-foreground">True Negatives</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {isClassification && metrics.confusion_matrix && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Matriz de Confusión</CardTitle>
+                  <CardDescription>Evaluación del clasificador</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {metrics.confusion_matrix.length === 2 ? (
+                    <div className="grid grid-cols-2 gap-2 max-w-md">
+                      <div className="p-4 bg-success/10 border-2 border-success/20 rounded-lg text-center">
+                        <div className="text-2xl font-bold">{metrics.confusion_matrix[0][0]}</div>
+                        <div className="text-xs text-muted-foreground">True Negatives</div>
+                      </div>
+                      <div className="p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg text-center">
+                        <div className="text-2xl font-bold">{metrics.confusion_matrix[0][1]}</div>
+                        <div className="text-xs text-muted-foreground">False Positives</div>
+                      </div>
+                      <div className="p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg text-center">
+                        <div className="text-2xl font-bold">{metrics.confusion_matrix[1][0]}</div>
+                        <div className="text-xs text-muted-foreground">False Negatives</div>
+                      </div>
+                      <div className="p-4 bg-success/10 border-2 border-success/20 rounded-lg text-center">
+                        <div className="text-2xl font-bold">{metrics.confusion_matrix[1][1]}</div>
+                        <div className="text-xs text-muted-foreground">True Positives</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Matriz de confusión disponible para clasificación binaria
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Curva ROC</CardTitle>
-                <CardDescription>AUC = 0.956</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <RechartsLine data={rocData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="fpr" label={{ value: 'False Positive Rate', position: 'insideBottom', offset: -5 }} />
-                    <YAxis label={{ value: 'True Positive Rate', angle: -90, position: 'insideLeft' }} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="tpr" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                    <Line type="monotone" data={[{fpr:0,tpr:0},{fpr:1,tpr:1}]} dataKey="tpr" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" dot={false} />
-                  </RechartsLine>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            {rocData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Curva ROC</CardTitle>
+                  <CardDescription>
+                    AUC = {metrics.auc_score ? metrics.auc_score.toFixed(3) : 'N/A'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsLine data={rocData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="fpr" label={{ value: 'False Positive Rate', position: 'insideBottom', offset: -5 }} />
+                      <YAxis label={{ value: 'True Positive Rate', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="tpr" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                      <Line type="monotone" data={[{fpr:0,tpr:0},{fpr:1,tpr:1}]} dataKey="tpr" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" dot={false} />
+                    </RechartsLine>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
           
           <TabsContent value="predictions" className="space-y-4">
@@ -149,22 +240,34 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div 
-                      key={i} 
-                      className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                    >
-                      <span className="text-sm">Muestra #{i}</span>
-                      <div className="flex items-center gap-2">
-                        <Badge>Clase A</Badge>
-                        <span className="text-sm text-muted-foreground">
-                          Confianza: {(Math.random() * 20 + 80).toFixed(1)}%
-                        </span>
+                {loading ? (
+                  <div className="text-center py-4">Cargando predicciones...</div>
+                ) : predictions.length > 0 ? (
+                  <div className="space-y-2">
+                    {predictions.map((pred) => (
+                      <div 
+                        key={pred.sample_id} 
+                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                      >
+                        <span className="text-sm">Muestra #{pred.sample_id}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={pred.true_value === pred.predicted_value ? "default" : "destructive"}>
+                            Real: {pred.true_value} | Pred: {pred.predicted_value}
+                          </Badge>
+                          {pred.confidence && (
+                            <span className="text-sm text-muted-foreground">
+                              Confianza: {(pred.confidence * 100).toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    No hay predicciones disponibles
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -184,43 +287,47 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
           </TabsContent>
           
           <TabsContent value="analysis" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Curva de Aprendizaje</CardTitle>
-                <CardDescription>Training vs Validation Accuracy (PyTorch)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <RechartsLine data={learningCurveData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="epoch" label={{ value: 'Épocas', position: 'insideBottom', offset: -5 }} />
-                    <YAxis label={{ value: 'Accuracy', angle: -90, position: 'insideLeft' }} domain={[0.8, 1]} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="training" stroke="hsl(var(--primary))" strokeWidth={2} name="Training" />
-                    <Line type="monotone" dataKey="validation" stroke="hsl(var(--chart-2))" strokeWidth={2} name="Validation" />
-                  </RechartsLine>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            {learningCurveData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Curva de Aprendizaje</CardTitle>
+                  <CardDescription>Training vs Validation Accuracy (PyTorch)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsLine data={learningCurveData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="epoch" label={{ value: 'Épocas', position: 'insideBottom', offset: -5 }} />
+                      <YAxis label={{ value: 'Accuracy', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="training" stroke="hsl(var(--primary))" strokeWidth={2} name="Training" />
+                      <Line type="monotone" dataKey="validation" stroke="hsl(var(--chart-2))" strokeWidth={2} name="Validation" />
+                    </RechartsLine>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Importancia de Características</CardTitle>
-                <CardDescription>Análisis con Scikit-learn</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <RechartsBar data={featureImportanceData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" domain={[0, 100]} />
-                    <YAxis type="category" dataKey="feature" width={80} />
-                    <Tooltip />
-                    <Bar dataKey="importance" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                  </RechartsBar>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            {featureImportanceData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Importancia de Características</CardTitle>
+                  <CardDescription>Análisis con Scikit-learn</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsBar data={featureImportanceData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" domain={[0, 100]} />
+                      <YAxis type="category" dataKey="feature" width={80} />
+                      <Tooltip />
+                      <Bar dataKey="importance" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                    </RechartsBar>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
@@ -228,22 +335,34 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm">
+                  {trainingResults.model_parameters && (
+                    <div>
+                      <span className="text-muted-foreground">Parámetros:</span>
+                      <span className="ml-2 font-medium">
+                        {trainingResults.model_parameters.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {trainingResults.training_time && (
+                    <div>
+                      <span className="text-muted-foreground">Tiempo de entrenamiento:</span>
+                      <span className="ml-2 font-medium">
+                        {(trainingResults.training_time / 60).toFixed(1)} min
+                      </span>
+                    </div>
+                  )}
                   <div>
-                    <span className="text-muted-foreground">Parámetros:</span>
-                    <span className="ml-2 font-medium">1,247,832</span>
+                    <span className="text-muted-foreground">Framework:</span>
+                    <span className="ml-2 font-medium capitalize">{trainingResults.framework}</span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Tiempo de entrenamiento:</span>
-                    <span className="ml-2 font-medium">42.3 min</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Dataset size:</span>
-                    <span className="ml-2 font-medium">10,000 samples</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Épocas:</span>
-                    <span className="ml-2 font-medium">50</span>
-                  </div>
+                  {trainingResults.training_history?.epochs && (
+                    <div>
+                      <span className="text-muted-foreground">Épocas:</span>
+                      <span className="ml-2 font-medium">
+                        {trainingResults.training_history.epochs[trainingResults.training_history.epochs.length - 1]}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -255,7 +374,7 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
             <Download className="h-4 w-4 mr-2" />
             Exportar Resultados
           </Button>
-          <Button className="bg-gradient-primary">
+          <Button className="bg-gradient-primary" onClick={handleSaveModel}>
             Guardar Modelo
           </Button>
         </div>

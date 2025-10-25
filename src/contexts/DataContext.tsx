@@ -7,9 +7,21 @@ interface LoadedData {
   source: "csv" | "database";
 }
 
+interface TrainingResults {
+  framework: string;
+  metrics: any;
+  plots?: any;
+  training_history?: any;
+  training_time?: number;
+  model_parameters?: number;
+  message?: string;
+}
+
 interface DataContextType {
   loadedData: LoadedData | null;
   setLoadedData: (data: LoadedData | null) => void;
+  trainingResults: TrainingResults | null;
+  setTrainingResults: (results: TrainingResults | null) => void;
   completedModules: {
     loader: boolean;
     cleaner: boolean;
@@ -25,6 +37,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [loadedData, setLoadedData] = useState<LoadedData | null>(null);
+  const [trainingResults, setTrainingResults] = useState<TrainingResults | null>(null);
   const [completedModules, setCompletedModules] = useState({
     loader: false,
     cleaner: false,
@@ -42,7 +55,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <DataContext.Provider value={{ loadedData, setLoadedData, completedModules, completeModule, developerMode, toggleDeveloperMode }}>
+    <DataContext.Provider value={{ 
+      loadedData, 
+      setLoadedData, 
+      trainingResults, 
+      setTrainingResults,
+      completedModules, 
+      completeModule, 
+      developerMode, 
+      toggleDeveloperMode 
+    }}>
       {children}
     </DataContext.Provider>
   );

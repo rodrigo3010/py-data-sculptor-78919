@@ -14,6 +14,24 @@ export default defineConfig(({ mode }) => ({
 		],
 		host: "::",
 		port: 8080,
+		proxy: {
+			'/train-model': {
+				target: 'http://localhost:5050',
+				changeOrigin: true,
+			},
+			'/predictions': {
+				target: 'http://localhost:5050',
+				changeOrigin: true,
+			},
+			'/predict': {
+				target: 'http://localhost:5050',
+				changeOrigin: true,
+			},
+			'/save-model': {
+				target: 'http://localhost:5050',
+				changeOrigin: true,
+			},
+		},
 	},
 	plugins: [react(), mode === "development" && componentTagger()].filter(
 		Boolean,
