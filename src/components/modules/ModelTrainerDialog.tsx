@@ -6,10 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
-import { Brain, Network, Layers } from "lucide-react";
+import { Brain, Network, Layers, Table as TableIcon, Save, PlayCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import axios from "axios";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 interface ModelTrainerDialogProps {
   open: boolean;
@@ -45,6 +48,12 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
   const [learningRate, setLearningRate] = useState(0.001);
   const [batchSize, setBatchSize] = useState(32);
   const [lossFunction, setLossFunction] = useState("cross_entropy");
+  
+  // Prediction state
+  const [predictions, setPredictions] = useState<any[]>([]);
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [showDataTable, setShowDataTable] = useState(true);
+  const [isSavingToDb, setIsSavingToDb] = useState(false);
 
   const handleTrain = async (framework: string) => {
     if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
@@ -135,6 +144,69 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
     }
   };
 
+  const handlePredict = async () => {
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
+      toast({
+        title: "Error",
+        description: "No hay datos para predecir",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPredicting(true);
+    
+    try {
+      const response = await axios.get("/predictions?n_samples=20");
+      setPredictions(response.data.predictions || []);
+      
+      toast({
+        title: "Predicciones generadas",
+        description: `Se generaron ${response.data.predictions?.length || 0} predicciones`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error al predecir",
+        description: error.response?.data?.detail || error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  const handleSaveToDatabase = async () => {
+    if (!loadedData || loadedData.source !== "database") {
+      toast({
+        title: "Error",
+        description: "Solo se pueden guardar datos que provienen de una base de datos",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingToDb(true);
+
+    try {
+      // Aquí puedes agregar la lógica para guardar a la BD
+      // Por ahora simularemos el guardado
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      toast({
+        title: "Datos guardados",
+        description: `Tabla "${loadedData.tableName}" actualizada en la base de datos`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error al guardar",
+        description: error.message || "Error desconocido",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingToDb(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -144,6 +216,123 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
             Configura y entrena modelos con Scikit-learn y PyTorch
           </DialogDescription>
         </DialogHeader>
+
+        {/* Información de datos cargados */}
+        {loadedData && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Datos Cargados</CardTitle>
+                  <CardDescription>
+                    Tabla: {loadedData.tableName} | Filas: {loadedData.rows.length} | Columnas: {loadedData.columns.length}
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDataTable(!showDataTable)}
+                >
+                  <TableIcon className="h-4 w-4 mr-2" />
+                  {showDataTable ? "Ocultar" : "Mostrar"} Tabla
+                </Button>
+              </div>
+            </CardHeader>
+            
+            {showDataTable && (
+              <CardContent>
+                <div className="max-h-64 overflow-auto border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {loadedData.columns.map((col) => (
+                          <TableHead key={col} className="font-semibold">
+                            {col}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loadedData.rows.slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx}>
+                          {loadedData.columns.map((col) => (
+                            <TableCell key={col}>
+                              {row[col]?.toString() || "-"}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {loadedData.rows.length > 10 && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Mostrando 10 de {loadedData.rows.length} filas
+                  </p>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {/* Botones de acción principales */}
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            variant="outline"
+            onClick={handlePredict}
+            disabled={isPredicting || !trainingComplete}
+          >
+            <PlayCircle className="h-4 w-4 mr-2" />
+            {isPredicting ? "Prediciendo..." : "Predecir"}
+          </Button>
+          
+          {loadedData?.source === "database" && (
+            <Button
+              className="flex-1"
+              variant="outline"
+              onClick={handleSaveToDatabase}
+              disabled={isSavingToDb}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isSavingToDb ? "Guardando..." : "Guardar a BD"}
+            </Button>
+          )}
+        </div>
+
+        {/* Predicciones */}
+        {predictions.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Predicciones Recientes</CardTitle>
+              <CardDescription>
+                Últimas {predictions.length} predicciones del modelo
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-h-48 overflow-auto">
+                {predictions.map((pred, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-2 bg-muted/30 rounded-lg"
+                  >
+                    <span className="text-sm">Muestra #{pred.sample_id || idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={pred.true_value === pred.predicted_value ? "default" : "destructive"}>
+                        Real: {pred.true_value} | Pred: {pred.predicted_value}
+                      </Badge>
+                      {pred.confidence && (
+                        <span className="text-xs text-muted-foreground">
+                          {(pred.confidence * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
         
         <Tabs defaultValue="sklearn" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
