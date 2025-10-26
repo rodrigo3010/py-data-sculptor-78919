@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Brain, Network, Layers, PlayCircle, CheckCircle2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
   const [trainingComplete, setTrainingComplete] = useState(false);
   const { toast } = useToast();
   const { completeModule, loadedData, setTrainingResults } = useData();
+  const navigate = useNavigate();
   
   // Sklearn state
   const [sklearnModel, setSklearnModel] = useState("rf");
@@ -159,34 +161,50 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
     setIsPredicting(true);
     setShowPredictions(false);
-    
+
     try {
+      console.debug("[ModelTrainerDialog] Solicitud de predicciones iniciada...");
       const response = await axios.get("/predictions?n_samples=20");
-      
-      if (!response.data.predictions || response.data.predictions.length === 0) {
+      console.debug("[ModelTrainerDialog] Respuesta /predictions:", response.status, response.data);
+
+      // Defensive checks and improved diagnostics
+      if (!response || !response.data || !response.data.predictions || response.data.predictions.length === 0) {
+        console.debug("[ModelTrainerDialog] No se encontraron predicciones en la respuesta:", response?.data);
+        const serverMessage = response?.data?.message || response?.data?.detail;
         toast({
           title: "Sin predicciones",
-          description: "No se pudieron generar predicciones del conjunto de prueba.",
+          description: serverMessage
+            ? `Servidor: ${serverMessage}`
+            : "No se pudieron generar predicciones del conjunto de prueba. Verifica que el modelo esté entrenado y que el backend esté disponible.",
           variant: "destructive",
         });
         setPredictions([]);
         setIsPredicting(false);
         return;
       }
-      
+
       setPredictions(response.data.predictions);
       setShowPredictions(true);
       setIsPredicting(false);
-      
+
       toast({
         title: "✅ Predicciones generadas",
         description: `Se generaron ${response.data.predictions.length} predicciones del conjunto de prueba`,
       });
     } catch (error: any) {
+      // Log full error for debugging
+      console.error("[ModelTrainerDialog] Error al solicitar predicciones:", error);
       setIsPredicting(false);
+
+      // Try to extract useful server-side details
+      const serverDetail = error?.response?.data?.detail || error?.response?.data?.message || error?.response?.data || null;
+      const description = serverDetail
+        ? `Error del servidor: ${typeof serverDetail === "string" ? serverDetail : JSON.stringify(serverDetail)}`
+        : error?.message || "Error al generar predicciones. Revisa los logs del servidor y que exista un modelo entrenado.";
+
       toast({
         title: "Error al predecir",
-        description: error.response?.data?.detail || error.message || "Error al generar predicciones",
+        description,
         variant: "destructive",
       });
     }
@@ -401,6 +419,53 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Dataset cargado */}
+        {loadedData && (
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Dataset cargado</CardTitle>
+              <CardDescription className="text-xs">
+                {loadedData.tableName} • {loadedData.rows?.length ?? 0} filas × {loadedData.columns?.length ?? 0} columnas
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg overflow-auto max-h-40 mb-2">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      {loadedData.columns?.slice(0, 8).map((col) => (
+                        <th key={col} className="text-left px-2 py-1">{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(loadedData.rows || []).slice(0, 5).map((row, idx) => (
+                      <tr key={idx}>
+                        {loadedData.columns?.slice(0, 8).map((col) => (
+                          <td key={col} className="px-2 py-1">{String(row[col] ?? "")}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Close the dialog and navigate to the full table view
+                    onOpenChange(false);
+                    navigate("/table-view");
+                  }}
+                >
+                  Ver tabla completa
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sección de Predicciones */}
         {trainingComplete && (
