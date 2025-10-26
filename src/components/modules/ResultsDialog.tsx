@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, LineChart, TrendingUp, Download } from "lucide-react";
+import { BarChart3, LineChart, TrendingUp, Download, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LineChart as RechartsLine, Line, BarChart as RechartsBar, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -55,6 +55,37 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
         description: error.response?.data?.detail || "Error al guardar el modelo",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleSaveToSupabase = async () => {
+    if (!trainingResults) return;
+    
+    setLoading(true);
+    
+    try {
+      const response = await axios.post("/save-to-supabase", {
+        table_name: "model_results",
+        training_results: trainingResults,
+        predictions: predictions.length > 0 ? predictions : null,
+        model_metadata: {
+          model_type: trainingResults.framework === "sklearn" ? "scikit-learn" : "pytorch",
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      toast({
+        title: "✅ Guardado en Supabase",
+        description: response.data.message,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error al guardar en Supabase",
+        description: error.response?.data?.detail || "Error desconocido",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -130,7 +161,7 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Resultados del Modelo</DialogTitle>
           <DialogDescription>
@@ -171,6 +202,30 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
                 </Card>
               ))}
             </div>
+
+            {/* Gráfico de comparación de métricas */}
+            {metricsDisplay.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Comparación de Métricas</CardTitle>
+                  <CardDescription>Rendimiento del modelo</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsBar data={metricsDisplay.map(m => ({
+                      name: m.name,
+                      value: parseFloat(m.value.replace('%', '')) || parseFloat(m.value) * 100 || 0
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="hsl(var(--primary))" name="Valor (%)" />
+                    </RechartsBar>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
             {isClassification && metrics.confusion_matrix && (
               <Card>
@@ -271,19 +326,62 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribución de Predicciones</CardTitle>
-                <CardDescription>Por clase y confianza</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-48 flex items-center justify-center bg-muted/30 rounded-lg">
-                  <p className="text-muted-foreground">
-                    Gráfico de distribución (requiere backend)
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            {predictions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Distribución de Predicciones</CardTitle>
+                  <CardDescription>Conteo por clase predicha</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsBar data={
+                      Object.entries(
+                        predictions.reduce((acc: any, pred) => {
+                          const val = pred.predicted_value;
+                          acc[val] = (acc[val] || 0) + 1;
+                          return acc;
+                        }, {})
+                      ).map(([clase, count]) => ({ clase, count }))
+                    }>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="clase" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="count" fill="hsl(var(--primary))" name="Predicciones" />
+                    </RechartsBar>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {predictions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Precisión de Predicciones</CardTitle>
+                  <CardDescription>Correctas vs Incorrectas</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsBar data={[
+                      {
+                        name: 'Resultados',
+                        correctas: predictions.filter(p => p.true_value === p.predicted_value).length,
+                        incorrectas: predictions.filter(p => p.true_value !== p.predicted_value).length
+                      }
+                    ]}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="correctas" fill="hsl(var(--chart-1))" name="Correctas" />
+                      <Bar dataKey="incorrectas" fill="hsl(var(--destructive))" name="Incorrectas" />
+                    </RechartsBar>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
           
           <TabsContent value="analysis" className="space-y-4">
@@ -303,6 +401,37 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
                       <Legend />
                       <Line type="monotone" dataKey="training" stroke="hsl(var(--primary))" strokeWidth={2} name="Training" />
                       <Line type="monotone" dataKey="validation" stroke="hsl(var(--chart-2))" strokeWidth={2} name="Validation" />
+                    </RechartsLine>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Gráfico de pérdida (Loss) para PyTorch */}
+            {trainingResults.training_history?.train_loss && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Curva de Pérdida (Loss)</CardTitle>
+                  <CardDescription>Training vs Validation Loss (PyTorch)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RechartsLine data={
+                      trainingResults.training_history.epochs.map((epoch: number, idx: number) => ({
+                        epoch,
+                        train_loss: trainingResults.training_history.train_loss[idx],
+                        val_loss: trainingResults.training_history.val_loss?.[idx]
+                      }))
+                    }>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="epoch" label={{ value: 'Épocas', position: 'insideBottom', offset: -5 }} />
+                      <YAxis label={{ value: 'Loss', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="train_loss" stroke="hsl(var(--destructive))" strokeWidth={2} name="Training Loss" />
+                      {trainingResults.training_history.val_loss && (
+                        <Line type="monotone" dataKey="val_loss" stroke="hsl(var(--chart-3))" strokeWidth={2} name="Validation Loss" />
+                      )}
                     </RechartsLine>
                   </ResponsiveContainer>
                 </CardContent>
@@ -374,8 +503,16 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
             <Download className="h-4 w-4 mr-2" />
             Exportar Resultados
           </Button>
-          <Button className="bg-gradient-primary" onClick={handleSaveModel}>
+          <Button variant="outline" onClick={handleSaveModel}>
             Guardar Modelo
+          </Button>
+          <Button 
+            className="bg-gradient-primary" 
+            onClick={handleSaveToSupabase}
+            disabled={loading}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {loading ? "Guardando..." : "Guardar en Supabase"}
           </Button>
         </div>
       </DialogContent>

@@ -401,35 +401,59 @@ class PyTorchModelTrainer:
     
     def get_predictions_sample(self, n_samples: int = 10) -> Dict[str, Any]:
         """Get sample predictions from test set"""
+        print(f"DEBUG PyTorch get_predictions_sample: hasattr X_test={hasattr(self, 'X_test')}, hasattr y_test={hasattr(self, 'y_test')}")
+        
         if not hasattr(self, 'X_test') or not hasattr(self, 'y_test'):
+            print("DEBUG PyTorch: No X_test o y_test disponible")
             return {"predictions": []}
+        
+        if self.X_test is None or self.y_test is None:
+            print("DEBUG PyTorch: X_test o y_test es None")
+            return {"predictions": []}
+        
+        if len(self.X_test) == 0 or len(self.y_test) == 0:
+            print("DEBUG PyTorch: X_test o y_test está vacío")
+            return {"predictions": []}
+        
+        print(f"DEBUG PyTorch: X_test shape={self.X_test.shape}, y_test shape={self.y_test.shape}")
         
         n_samples = min(n_samples, len(self.X_test))
         X_sample = self.X_test[:n_samples]
         y_true = self.y_test[:n_samples]
         
-        predictions = self.predict(X_sample)
+        print(f"DEBUG PyTorch: Generando {n_samples} predicciones")
+        
+        # X_test is already scaled, so convert directly to tensor
+        self.model.eval()
+        X_tensor = torch.FloatTensor(X_sample).to(self.device)
+        
+        with torch.no_grad():
+            outputs = self.model(X_tensor)
+            
+            if self.is_classification:
+                predictions = torch.argmax(outputs, dim=1).cpu().numpy()
+            else:
+                predictions = outputs.squeeze().cpu().numpy()
         
         results = []
         for i in range(n_samples):
             pred_data = {
                 "sample_id": i + 1,
-                "true_value": float(y_true[i]) if not self.is_classification else int(y_true[i]),
+                "true_value": float(y_true.iloc[i]) if hasattr(y_true, 'iloc') else (float(y_true[i]) if not self.is_classification else int(y_true[i])),
                 "predicted_value": float(predictions[i]) if not self.is_classification else int(predictions[i])
             }
             
             # Add confidence for classification
             if self.is_classification:
-                self.model.eval()
-                X_tensor = torch.FloatTensor(self.scaler.transform(X_sample[i:i+1])).to(self.device)
                 with torch.no_grad():
-                    outputs = self.model(X_tensor)
-                    probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
+                    output = outputs[i:i+1]
+                    probs = torch.softmax(output, dim=1).cpu().numpy()[0]
                     pred_data["confidence"] = float(np.max(probs))
                     pred_data["probabilities"] = probs.tolist()
             
             results.append(pred_data)
         
+        print(f"DEBUG PyTorch: Generadas {len(results)} predicciones")
         return {"predictions": results}
     
     def save_model(self, model_name: str) -> str:

@@ -165,10 +165,12 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
   const loadTableData = async (tableName: string) => {
     try {
       setLoading(true);
-      const { data, error } = await supabaseClient
+      
+      // Cargar TODOS los datos de la tabla (sin límite)
+      // Esto es necesario para que el módulo "Limpiar Datos" pueda detectar duplicados correctamente
+      const { data, error, count } = await supabaseClient
         .from(tableName)
-        .select('*')
-        .limit(100);
+        .select('*', { count: 'exact' });
 
       if (error) throw error;
 
@@ -187,7 +189,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
 
         toast({
           title: "Datos cargados",
-          description: `${data.length} registros cargados de la tabla ${tableName}`,
+          description: `${data.length} registros cargados de la tabla ${tableName} (dataset completo)`,
         });
       } else {
         setTableData([]);
@@ -228,18 +230,50 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
     return nullCount;
   };
 
-  const calculateDuplicates = (data: any[]) => {
+  const calculateDuplicates = (data: any[], columns: string[]) => {
     if (!data || data.length === 0) return 0;
+    
+    // Identificar columnas que probablemente son IDs (para ignorarlas)
+    const idColumns = columns.filter(col => {
+      const colLower = col.toLowerCase();
+      // Detectar columnas de ID comunes
+      if (colLower === 'id' || colLower === '_id' || colLower === 'index' || 
+          colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+        // Verificar si es única (característica de un ID)
+        const uniqueValues = new Set(data.map(r => r[col]));
+        return uniqueValues.size === data.length;
+      }
+      return false;
+    });
+    
+    // Columnas a considerar para duplicados (todas excepto IDs)
+    const columnsToCheck = columns.filter(col => !idColumns.includes(col));
+    
+    // Si no hay columnas para verificar, usar todas
+    const finalColumns = columnsToCheck.length > 0 ? columnsToCheck : columns;
+    
     const seen = new Set();
     let duplicates = 0;
+    
     data.forEach(row => {
-      const rowString = JSON.stringify(row);
-      if (seen.has(rowString)) {
+      // Crear una representación normalizada usando solo las columnas relevantes
+      const rowKey = finalColumns
+        .map(col => {
+          const value = row[col];
+          // Normalizar valores para comparación
+          if (value === null || value === undefined || value === '') return 'NULL';
+          if (typeof value === 'string') return value.trim().toLowerCase();
+          return String(value);
+        })
+        .join('|');
+      
+      if (seen.has(rowKey)) {
         duplicates++;
       } else {
-        seen.add(rowString);
+        seen.add(rowKey);
       }
     });
+    
     return duplicates;
   };
 
@@ -293,7 +327,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Cargar Datos</DialogTitle>
           <DialogDescription>
@@ -386,7 +420,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Duplicados:</span>
-                          <Badge variant="destructive">{calculateDuplicates(csvData)}</Badge>
+                          <Badge variant="destructive">{calculateDuplicates(csvData, csvColumns)}</Badge>
                         </div>
                         <div className="flex items-center justify-between col-span-2">
                           <span className="text-muted-foreground">Inconsistencias:</span>
@@ -475,7 +509,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Duplicados:</span>
-                          <Badge variant="destructive">{calculateDuplicates(tableData)}</Badge>
+                          <Badge variant="destructive">{calculateDuplicates(tableData, tableColumns)}</Badge>
                         </div>
                         <div className="flex items-center justify-between col-span-2">
                           <span className="text-muted-foreground">Inconsistencias:</span>

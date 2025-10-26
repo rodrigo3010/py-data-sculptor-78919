@@ -127,6 +127,95 @@ def clean_missing_values(df: pd.DataFrame, params: dict) -> tuple[pd.DataFrame, 
     return df, message
 
 
+def clean_duplicates(df: pd.DataFrame, params: dict) -> tuple[pd.DataFrame, str]:
+    """Eliminar filas duplicadas del DataFrame"""
+    remove_duplicates = params.get("removeDuplicates", False)
+    
+    initial_rows = len(df)
+    
+    # Identificar columnas que probablemente son IDs (para ignorarlas en la detección)
+    id_columns = []
+    for col in df.columns:
+        col_lower = col.lower()
+        # Detectar columnas de ID comunes
+        if col_lower in ['id', '_id', 'index', 'row_id', 'pk'] or col_lower.endswith('_id'):
+            # Verificar si es única (característica de un ID)
+            if df[col].nunique() == len(df):
+                id_columns.append(col)
+    
+    # Columnas a considerar para duplicados (todas excepto IDs)
+    columns_to_check = [col for col in df.columns if col not in id_columns]
+    
+    # Si no hay columnas para verificar (solo IDs), usar todas
+    if not columns_to_check:
+        columns_to_check = df.columns.tolist()
+    
+    # Detectar duplicados basándose en las columnas relevantes
+    if columns_to_check:
+        initial_duplicates = df.duplicated(subset=columns_to_check, keep=False).sum()
+        duplicates_to_remove = df.duplicated(subset=columns_to_check, keep='first').sum()
+    else:
+        initial_duplicates = df.duplicated(keep=False).sum()
+        duplicates_to_remove = df.duplicated(keep='first').sum()
+    
+    if remove_duplicates:
+        # Eliminar duplicados basándose en columnas relevantes, manteniendo la primera ocurrencia
+        if columns_to_check:
+            df = df.drop_duplicates(subset=columns_to_check, keep='first')
+        else:
+            df = df.drop_duplicates(keep='first')
+    
+    final_rows = len(df)
+    rows_removed = initial_rows - final_rows
+    
+    # Mensaje informativo
+    message = f"Duplicados encontrados: {duplicates_to_remove}"
+    if id_columns:
+        message += f" (ignorando columnas ID: {', '.join(id_columns)})"
+    
+    if remove_duplicates:
+        message += f". {rows_removed} filas duplicadas eliminadas, manteniendo solo la primera ocurrencia de cada grupo"
+    else:
+        message += ". Activa 'Eliminar filas duplicadas' para limpiarlos"
+    
+    return df, message
+
+
+def clean_inconsistencies(df: pd.DataFrame, params: dict) -> tuple[pd.DataFrame, str]:
+    """Limpiar inconsistencias en los datos (espacios, mayúsculas, etc.)"""
+    normalize_text = params.get("normalizeText", True)
+    remove_spaces = params.get("removeSpaces", True)
+    lowercase = params.get("lowercase", False)
+    
+    initial_rows = len(df)
+    changes_made = 0
+    
+    # Obtener columnas de texto
+    text_columns = df.select_dtypes(include=['object']).columns
+    
+    for col in text_columns:
+        if remove_spaces:
+            # Eliminar espacios extra al inicio y final
+            df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
+            changes_made += 1
+        
+        if lowercase:
+            # Convertir a minúsculas
+            df[col] = df[col].apply(lambda x: x.lower() if isinstance(x, str) else x)
+            changes_made += 1
+        
+        if normalize_text:
+            # Normalizar espacios múltiples a uno solo
+            df[col] = df[col].apply(lambda x: ' '.join(x.split()) if isinstance(x, str) else x)
+            changes_made += 1
+    
+    message = f"Inconsistencias procesadas en {len(text_columns)} columnas de texto"
+    if changes_made > 0:
+        message += f". Se aplicaron {changes_made} transformaciones"
+    
+    return df, message
+
+
 @app.post("/load-csv")
 async def load_csv(
     file: UploadFile,
@@ -142,18 +231,31 @@ async def load_csv(
         # Use pandas to read CSV
         df = pd.read_csv(StringIO(text_content), delimiter=delimiter)
 
-        # Convert to list for preview (limited rows)
-        preview_data = df.head(preview_rows).to_dict("records")
         columns = df.columns.tolist()
         total_rows = len(df)
-
-        return CSVResponse(
-            success=True,
-            data=preview_data,
-            columns=columns,
-            totalRows=total_rows,
-            message=f"Archivo CSV cargado exitosamente con {total_rows} filas",
-        )
+        
+        # Si preview_rows es mayor o igual al total, devolver todas las filas
+        # Esto permite cargar el dataset completo cuando se necesita
+        if preview_rows >= total_rows or preview_rows >= 1000:
+            # Devolver todas las filas para análisis completo
+            all_data = df.to_dict("records")
+            return CSVResponse(
+                success=True,
+                data=all_data,
+                columns=columns,
+                totalRows=total_rows,
+                message=f"Archivo CSV cargado exitosamente con {total_rows} filas (dataset completo)",
+            )
+        else:
+            # Devolver solo preview para visualización rápida
+            preview_data = df.head(preview_rows).to_dict("records")
+            return CSVResponse(
+                success=True,
+                data=preview_data,
+                columns=columns,
+                totalRows=total_rows,
+                message=f"Archivo CSV cargado: mostrando {len(preview_data)} de {total_rows} filas",
+            )
 
     except Exception as e:
         return CSVResponse(
@@ -173,10 +275,20 @@ async def clean_data(request: CleanDataRequest):
         df = pd.DataFrame(request.data, columns=request.columns)
         table_name = None
 
+        # Ejecutar la operación correspondiente
         if request.operation == "missing":
             df, message = clean_missing_values(df, request.params)
+        elif request.operation == "normalize":
+            # Operación para limpiar duplicados
+            df, message = clean_duplicates(df, request.params)
+        elif request.operation == "transform":
+            # Operación para limpiar inconsistencias
+            df, message = clean_inconsistencies(df, request.params)
+        else:
+            raise ValueError(f"Operación no soportada: {request.operation}")
 
-            # Update or create table in Supabase
+        # Opcionalmente guardar en Supabase (solo para missing values por ahora)
+        if request.operation == "missing":
             try:
                 table_name = request.params.get("table_name", "cleaned_data")
                 data = df.to_dict("records")
@@ -202,8 +314,6 @@ async def clean_data(request: CleanDataRequest):
 
             except Exception as e:
                 message += f"\nAdvertencia: No se pudo actualizar Supabase: {str(e)}"
-        else:
-            raise ValueError(f"Operación no soportada: {request.operation}")
 
         # Convert back to list of dicts for response
         cleaned_data = df.to_dict("records")
@@ -325,25 +435,43 @@ async def get_predictions(n_samples: int = 10):
     global sklearn_trainer, pytorch_trainer
     
     try:
+        # Debug: verificar estado de los trainers
+        print(f"DEBUG: sklearn_trainer is None: {sklearn_trainer is None}")
+        print(f"DEBUG: pytorch_trainer is None: {pytorch_trainer is None}")
+        
         if sklearn_trainer is not None:
+            print(f"DEBUG: sklearn_trainer tiene X_test: {hasattr(sklearn_trainer, 'X_test')}")
+            if hasattr(sklearn_trainer, 'X_test'):
+                print(f"DEBUG: X_test shape: {sklearn_trainer.X_test.shape if hasattr(sklearn_trainer.X_test, 'shape') else 'No shape'}")
+            
             predictions = sklearn_trainer.get_predictions_sample(n_samples)
             predictions["framework"] = "sklearn"
             predictions["is_classification"] = sklearn_trainer.is_classification
+            
+            print(f"DEBUG: Predicciones generadas: {len(predictions.get('predictions', []))}")
             return JSONResponse(content=predictions)
             
         elif pytorch_trainer is not None:
+            print(f"DEBUG: pytorch_trainer tiene X_test: {hasattr(pytorch_trainer, 'X_test')}")
+            
             predictions = pytorch_trainer.get_predictions_sample(n_samples)
             predictions["framework"] = "pytorch"
             predictions["is_classification"] = pytorch_trainer.is_classification
+            
+            print(f"DEBUG: Predicciones generadas: {len(predictions.get('predictions', []))}")
             return JSONResponse(content=predictions)
             
         else:
+            print("DEBUG: No hay modelo entrenado")
             return JSONResponse(content={
                 "predictions": [],
-                "message": "No model trained yet"
+                "message": "No model trained yet. Please train a model first."
             })
             
     except Exception as e:
+        print(f"ERROR en /predictions: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -421,6 +549,59 @@ async def save_model(framework: str, model_name: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class SaveToSupabaseRequest(BaseModel):
+    table_name: str
+    training_results: Dict[str, Any]
+    predictions: Optional[List[Dict[str, Any]]] = None
+    model_metadata: Optional[Dict[str, Any]] = None
+
+
+@app.post("/save-to-supabase")
+async def save_to_supabase(request: SaveToSupabaseRequest):
+    """Save training results and predictions to Supabase"""
+    try:
+        # Preparar datos para guardar
+        data_to_insert = {
+            "table_name": request.table_name,
+            "framework": request.training_results.get("framework"),
+            "metrics": request.training_results.get("metrics", {}),
+            "model_type": request.model_metadata.get("model_type") if request.model_metadata else None,
+            "training_time": request.training_results.get("training_time"),
+            "model_parameters": request.training_results.get("model_parameters"),
+            "created_at": "now()",
+        }
+        
+        # Guardar en tabla de resultados de modelos
+        result = supabase.table("model_results").insert(data_to_insert).execute()
+        
+        # Si hay predicciones, guardarlas también
+        if request.predictions and len(request.predictions) > 0:
+            model_id = result.data[0]["id"] if result.data else None
+            
+            if model_id:
+                predictions_data = [
+                    {
+                        "model_result_id": model_id,
+                        "sample_id": pred.get("sample_id"),
+                        "true_value": pred.get("true_value"),
+                        "predicted_value": pred.get("predicted_value"),
+                        "confidence": pred.get("confidence"),
+                    }
+                    for pred in request.predictions[:100]  # Limitar a 100 predicciones
+                ]
+                
+                supabase.table("model_predictions").insert(predictions_data).execute()
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": "Resultados guardados exitosamente en Supabase",
+            "record_id": result.data[0]["id"] if result.data else None
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al guardar en Supabase: {str(e)}")
 
 
 if __name__ == "__main__":

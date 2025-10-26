@@ -45,17 +45,32 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
   const [removeOutliers, setRemoveOutliers] = useState(false);
   const [outlierMethod, setOutlierMethod] = useState("iqr");
   const [loading, setLoading] = useState(false);
+  const [removeDuplicates, setRemoveDuplicates] = useState(false);
+  const [normalizeText, setNormalizeText] = useState(false);
+  const [trimSpaces, setTrimSpaces] = useState(true);
 
   const displayData = showCleaned ? cleanedData : (loadedData?.rows.slice(0, 5) || dirtyData);
   const displayColumns = loadedData?.columns || ["id", "nombre", "edad", "ciudad", "salario"];
 
   // Calculate statistics
   const calculateNulls = () => {
-    if (!loadedData) return 0;
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return 0;
     let nullCount = 0;
     loadedData.rows.forEach(row => {
       loadedData.columns.forEach(col => {
-        if (row[col] === null || row[col] === undefined || row[col] === '') {
+        const value = row[col];
+        // Detectar null, undefined, strings vacíos, "null", "NULL", "NaN", espacios
+        if (
+          value === null || 
+          value === undefined || 
+          value === '' || 
+          value === 'null' || 
+          value === 'NULL' || 
+          value === 'NaN' || 
+          value === 'nan' ||
+          (typeof value === 'string' && value.trim() === '') ||
+          (typeof value === 'number' && isNaN(value))
+        ) {
           nullCount++;
         }
       });
@@ -64,18 +79,128 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
   };
 
   const calculateDuplicates = () => {
-    if (!loadedData) return 0;
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return 0;
+    
+    // Identificar columnas que probablemente son IDs (para ignorarlas)
+    const idColumns = loadedData.columns.filter(col => {
+      const colLower = col.toLowerCase();
+      // Detectar columnas de ID comunes
+      if (colLower === 'id' || colLower === '_id' || colLower === 'index' || 
+          colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+        // Verificar si es única (característica de un ID)
+        const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
+        return uniqueValues.size === loadedData.rows.length;
+      }
+      return false;
+    });
+    
+    // Columnas a considerar para duplicados (todas excepto IDs)
+    const columnsToCheck = loadedData.columns.filter(col => !idColumns.includes(col));
+    
+    // Si no hay columnas para verificar, usar todas
+    const finalColumns = columnsToCheck.length > 0 ? columnsToCheck : loadedData.columns;
+    
     const seen = new Set();
     let duplicates = 0;
+    
     loadedData.rows.forEach(row => {
-      const rowString = JSON.stringify(row);
-      if (seen.has(rowString)) {
+      // Crear una representación normalizada usando solo las columnas relevantes
+      const rowKey = finalColumns
+        .map(col => {
+          const value = row[col];
+          // Normalizar valores para comparación
+          if (value === null || value === undefined || value === '') return 'NULL';
+          if (typeof value === 'string') return value.trim().toLowerCase();
+          return String(value);
+        })
+        .join('|');
+      
+      if (seen.has(rowKey)) {
         duplicates++;
       } else {
-        seen.add(rowString);
+        seen.add(rowKey);
       }
     });
     return duplicates;
+  };
+
+  // Obtener ejemplos de filas duplicadas
+  const getDuplicateExamples = () => {
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return [];
+    
+    // Identificar columnas que probablemente son IDs (para ignorarlas)
+    const idColumns = loadedData.columns.filter(col => {
+      const colLower = col.toLowerCase();
+      if (colLower === 'id' || colLower === '_id' || colLower === 'index' || 
+          colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+        const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
+        return uniqueValues.size === loadedData.rows.length;
+      }
+      return false;
+    });
+    
+    // Columnas a considerar para duplicados (todas excepto IDs)
+    const columnsToCheck = loadedData.columns.filter(col => !idColumns.includes(col));
+    const finalColumns = columnsToCheck.length > 0 ? columnsToCheck : loadedData.columns;
+    
+    const rowMap = new Map<string, number[]>();
+    
+    loadedData.rows.forEach((row, index) => {
+      const rowKey = finalColumns
+        .map(col => {
+          const value = row[col];
+          if (value === null || value === undefined || value === '') return 'NULL';
+          if (typeof value === 'string') return value.trim().toLowerCase();
+          return String(value);
+        })
+        .join('|');
+      
+      if (!rowMap.has(rowKey)) {
+        rowMap.set(rowKey, []);
+      }
+      rowMap.get(rowKey)!.push(index);
+    });
+    
+    // Retornar solo las filas que tienen duplicados
+    const duplicateGroups: Array<{indices: number[], row: any}> = [];
+    rowMap.forEach((indices, key) => {
+      if (indices.length > 1) {
+        duplicateGroups.push({
+          indices,
+          row: loadedData.rows[indices[0]]
+        });
+      }
+    });
+    
+    return duplicateGroups.slice(0, 3); // Máximo 3 ejemplos
+  };
+
+  // Calcular nulos por columna
+  const getNullsByColumn = () => {
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return {};
+    const nullsByCol: Record<string, number> = {};
+    
+    loadedData.columns.forEach(col => {
+      nullsByCol[col] = 0;
+      loadedData.rows.forEach(row => {
+        const value = row[col];
+        if (
+          value === null || 
+          value === undefined || 
+          value === '' || 
+          value === 'null' || 
+          value === 'NULL' || 
+          value === 'NaN' || 
+          value === 'nan' ||
+          (typeof value === 'string' && value.trim() === '') ||
+          (typeof value === 'number' && isNaN(value))
+        ) {
+          nullsByCol[col]++;
+        }
+      });
+    });
+    
+    return nullsByCol;
   };
 
   const calculateInconsistencies = () => {
@@ -159,7 +284,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Limpiar Datos</DialogTitle>
           <DialogDescription>
@@ -190,7 +315,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                   <h3 className="font-semibold text-sm">❓ 1️⃣ Datos nulos (missing values)</h3>
                   {loadedData && (
                     <Badge variant="destructive" className="text-xs">
-                      {calculateNulls()} valores nulos
+                      {calculateNulls()} valores nulos de {loadedData.rows.length * loadedData.columns.length} totales
                     </Badge>
                   )}
                 </div>
@@ -199,6 +324,25 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                   <li>• Ejemplo: edad sin valor, ciudad en blanco</li>
                   <li>• Problema: impide cálculos y puede sesgar resultados</li>
                 </ul>
+                
+                {/* Mostrar nulos por columna */}
+                {loadedData && calculateNulls() > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground">Nulos por columna:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(getNullsByColumn()).map(([col, count]) => (
+                        count > 0 && (
+                          <div key={col} className="flex items-center justify-between p-2 bg-background rounded border">
+                            <span className="text-xs font-medium truncate">{col}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {count} ({((count / loadedData.rows.length) * 100).toFixed(1)}%)
+                            </Badge>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -305,15 +449,49 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                   <h3 className="font-semibold text-sm">🧬 2️⃣ Datos duplicados</h3>
                   {loadedData && (
                     <Badge variant="destructive" className="text-xs">
-                      {calculateDuplicates()} filas duplicadas
+                      {calculateDuplicates()} filas duplicadas de {loadedData.rows.length} totales
                     </Badge>
                   )}
                 </div>
                 <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• Registros repetidos total o parcialmente</li>
-                  <li>• Ejemplo: dos filas con el mismo nombre y director</li>
-                  <li>• Problema: altera conteos, promedios y relaciones</li>
+                  <li>• <strong>Filas con datos duplicados:</strong> Mismos valores (ignora columnas ID)</li>
+                  <li>• Ejemplo: Fila 1 y Fila 5 tienen los mismos datos, solo difieren en ID</li>
+                  <li>• <strong>Acción:</strong> Elimina todas las copias excepto la primera</li>
                 </ul>
+                
+                {/* Mostrar porcentaje de duplicados */}
+                {loadedData && calculateDuplicates() > 0 && (
+                  <div className="mt-3 space-y-3">
+                    <div className="p-3 bg-background rounded border">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Porcentaje de duplicados:</span>
+                        <Badge variant="outline" className="text-xs">
+                          {((calculateDuplicates() / loadedData.rows.length) * 100).toFixed(2)}%
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Filas únicas:</span>
+                        <Badge variant="outline" className="text-xs">
+                          {loadedData.rows.length - calculateDuplicates()}
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    {/* Ejemplos de filas duplicadas */}
+                    {getDuplicateExamples().length > 0 && (
+                      <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200 dark:border-yellow-800">
+                        <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                          📋 Ejemplos de filas duplicadas:
+                        </p>
+                        {getDuplicateExamples().map((group, idx) => (
+                          <div key={idx} className="text-xs text-yellow-700 dark:text-yellow-300 mb-1">
+                            • Filas {group.indices.join(', ')} son idénticas ({group.indices.length} copias)
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -350,15 +528,15 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                 <Label htmlFor="remove-duplicates">Eliminar filas duplicadas</Label>
                 <Switch
                   id="remove-duplicates"
-                  checked={removeOutliers}
-                  onCheckedChange={setRemoveOutliers}
+                  checked={removeDuplicates}
+                  onCheckedChange={setRemoveDuplicates}
                 />
               </div>
 
               <Button
                 className="w-full bg-gradient-secondary"
                 onClick={() => handleClean('normalize', {
-                  removeDuplicates: removeOutliers,
+                  removeDuplicates: removeDuplicates,
                 })}
                 disabled={loading || !loadedData}
               >
@@ -418,20 +596,32 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="normalize-text">Normalizar texto (convertir a minúsculas)</Label>
-                <Switch id="normalize-text" />
+                <Switch 
+                  id="normalize-text"
+                  checked={normalizeText}
+                  onCheckedChange={setNormalizeText}
+                />
               </div>
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="trim-spaces">Eliminar espacios en blanco extra</Label>
-                <Switch id="trim-spaces" />
+                <Switch 
+                  id="trim-spaces"
+                  checked={trimSpaces}
+                  onCheckedChange={setTrimSpaces}
+                />
               </div>
 
               <Button
                 className="w-full bg-gradient-secondary"
-                onClick={() => handleClean('transform', {})}
+                onClick={() => handleClean('transform', {
+                  normalizeText: trimSpaces,
+                  removeSpaces: trimSpaces,
+                  lowercase: normalizeText,
+                })}
                 disabled={loading || !loadedData}
               >
-                {loading ? "Procesando con Pandas..." : "Aplicar Corrección de Inconsistencias"}
+                {loading ? "Procesando con Pandas..." : "Aplicar Limpieza de Inconsistencias"}
               </Button>
             </div>
           </TabsContent>

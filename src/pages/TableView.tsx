@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,7 +9,7 @@ import { useData } from "@/contexts/DataContext";
 const TableView = () => {
   const navigate = useNavigate();
   const { loadedData } = useData();
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   if (!loadedData) {
     navigate("/");
@@ -18,23 +18,32 @@ const TableView = () => {
 
   const { tableName, columns, rows } = loadedData;
 
+  // Función para resaltar coincidencias
+  const highlightMatch = (text: string, query: string) => {
+    if (!query) return text;
+    
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, index) => 
+      part.toLowerCase() === query.toLowerCase() 
+        ? <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 px-0.5 rounded">{part}</mark>
+        : part
+    );
+  };
+
+  // Filtrar filas basándose en la búsqueda global
   const filteredRows = useMemo(() => {
+    if (!searchQuery.trim()) return rows;
+    
+    const query = searchQuery.toLowerCase().trim();
+    
     return rows.filter((row) => {
-      return columns.every((column) => {
-        const filterValue = filters[column]?.toLowerCase() || "";
-        if (!filterValue) return true;
+      // Buscar en todas las columnas
+      return columns.some((column) => {
         const cellValue = String(row[column] ?? "").toLowerCase();
-        return cellValue.includes(filterValue);
+        return cellValue.includes(query);
       });
     });
-  }, [rows, columns, filters]);
-
-  const handleFilterChange = (column: string, value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [column]: value,
-    }));
-  };
+  }, [rows, columns, searchQuery]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -62,23 +71,33 @@ const TableView = () => {
 
       <main className="container mx-auto px-4 py-6">
         <div className="space-y-4">
-          {/* Filtros */}
+          {/* Barra de búsqueda global */}
           <div className="bg-card rounded-lg p-4 shadow-card">
-            <h2 className="text-lg font-semibold mb-3">Filtros</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {columns.map((column) => (
-                <div key={column} className="space-y-1">
-                  <label className="text-sm font-medium text-muted-foreground">
-                    {column}
-                  </label>
-                  <Input
-                    placeholder={`Filtrar por ${column}...`}
-                    value={filters[column] || ""}
-                    onChange={(e) => handleFilterChange(column, e.target.value)}
-                  />
-                </div>
-              ))}
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar en todas las columnas..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 text-base"
+                />
+              </div>
+              {searchQuery && (
+                <Button
+                  variant="outline"
+                  onClick={() => setSearchQuery("")}
+                  className="whitespace-nowrap"
+                >
+                  Limpiar
+                </Button>
+              )}
             </div>
+            {searchQuery && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Mostrando {filteredRows.length} coincidencia{filteredRows.length !== 1 ? 's' : ''} de "{searchQuery}"
+              </p>
+            )}
           </div>
 
           {/* Tabla */}
@@ -98,13 +117,17 @@ const TableView = () => {
                   {filteredRows.length > 0 ? (
                     filteredRows.map((row, idx) => (
                       <TableRow key={idx}>
-                        {columns.map((column) => (
-                          <TableCell key={column} className="whitespace-nowrap">
-                            {typeof row[column] === "object"
-                              ? JSON.stringify(row[column])
-                              : String(row[column] ?? "")}
-                          </TableCell>
-                        ))}
+                        {columns.map((column) => {
+                          const cellValue = typeof row[column] === "object"
+                            ? JSON.stringify(row[column])
+                            : String(row[column] ?? "");
+                          
+                          return (
+                            <TableCell key={column} className="whitespace-nowrap">
+                              {searchQuery ? highlightMatch(cellValue, searchQuery.trim()) : cellValue}
+                            </TableCell>
+                          );
+                        })}
                       </TableRow>
                     ))
                   ) : (
@@ -113,7 +136,9 @@ const TableView = () => {
                         colSpan={columns.length}
                         className="text-center py-8 text-muted-foreground"
                       >
-                        No se encontraron registros con los filtros aplicados
+                        {searchQuery 
+                          ? `No se encontraron resultados para "${searchQuery}"`
+                          : "No hay registros para mostrar"}
                       </TableCell>
                     </TableRow>
                   )}

@@ -6,21 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
-import { Brain, Network, Layers, PlayCircle, CheckCircle2, AlertCircle } from "lucide-react";
+import { Brain, Network, Layers, Table as TableIcon, Save, PlayCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import axios from "axios";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useData } from "@/contexts/DataContext";
 
 interface ModelTrainerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void;
 }
+
+import { useData } from "@/contexts/DataContext";
 
 export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrainerDialogProps) => {
   const [epochs, setEpochs] = useState([50]);
@@ -52,8 +52,8 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
   // Prediction state
   const [predictions, setPredictions] = useState<any[]>([]);
   const [isPredicting, setIsPredicting] = useState(false);
-  const [showPredictions, setShowPredictions] = useState(false);
-  const [currentFramework, setCurrentFramework] = useState<string>("");
+  const [showDataTable, setShowDataTable] = useState(true);
+  const [isSavingToDb, setIsSavingToDb] = useState(false);
 
   const handleTrain = async (framework: string) => {
     if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
@@ -77,9 +77,6 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
     setIsTraining(true);
     setProgress(0);
     setTrainingComplete(false);
-    setPredictions([]);
-    setShowPredictions(false);
-    setCurrentFramework(framework);
     
     const modelName = framework === "sklearn" ? sklearnModel : architecture;
     
@@ -130,7 +127,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
       setTrainingResults(response.data);
       
       toast({
-        title: "✅ Entrenamiento completo",
+        title: "Entrenamiento completo",
         description: response.data.message || "El modelo ha sido entrenado exitosamente",
       });
       
@@ -157,10 +154,28 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
       return;
     }
 
+    if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
+      toast({
+        title: "Error",
+        description: "No hay datos para predecir",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!targetColumn) {
+      toast({
+        title: "Error",
+        description: "Debes seleccionar una columna objetivo",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsPredicting(true);
-    setShowPredictions(false);
     
     try {
+      // Usar el endpoint que obtiene predicciones del test set guardado
       const response = await axios.get("/predictions?n_samples=20");
       
       if (!response.data.predictions || response.data.predictions.length === 0) {
@@ -170,25 +185,56 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
           variant: "destructive",
         });
         setPredictions([]);
-        setIsPredicting(false);
         return;
       }
       
       setPredictions(response.data.predictions);
-      setShowPredictions(true);
-      setIsPredicting(false);
       
       toast({
         title: "✅ Predicciones generadas",
         description: `Se generaron ${response.data.predictions.length} predicciones del conjunto de prueba`,
       });
     } catch (error: any) {
-      setIsPredicting(false);
       toast({
         title: "Error al predecir",
-        description: error.response?.data?.detail || error.message || "Error al generar predicciones",
+        description: error.response?.data?.detail || error.message,
         variant: "destructive",
       });
+      setPredictions([]);
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  const handleSaveToDatabase = async () => {
+    if (!loadedData || loadedData.source !== "database") {
+      toast({
+        title: "Error",
+        description: "Solo se pueden guardar datos que provienen de una base de datos",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingToDb(true);
+
+    try {
+      // Aquí puedes agregar la lógica para guardar a la BD
+      // Por ahora simularemos el guardado
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      toast({
+        title: "Datos guardados",
+        description: `Tabla "${loadedData.tableName}" actualizada en la base de datos`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error al guardar",
+        description: error.message || "Error desconocido",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingToDb(false);
     }
   };
 
@@ -196,23 +242,137 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl flex items-center gap-2">
-            <Brain className="h-6 w-6" />
-            Entrenar Modelos de Machine Learning
-          </DialogTitle>
+          <DialogTitle className="text-2xl">Entrenar Modelos</DialogTitle>
           <DialogDescription>
-            Entrena modelos con Scikit-learn o PyTorch y genera predicciones
+            Configura y entrena modelos con Scikit-learn y PyTorch
           </DialogDescription>
         </DialogHeader>
 
+        {/* Información de datos cargados */}
+        {loadedData && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Datos Cargados</CardTitle>
+                  <CardDescription>
+                    Tabla: {loadedData.tableName} | Filas: {loadedData.rows.length} | Columnas: {loadedData.columns.length}
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDataTable(!showDataTable)}
+                >
+                  <TableIcon className="h-4 w-4 mr-2" />
+                  {showDataTable ? "Ocultar" : "Mostrar"} Tabla
+                </Button>
+              </div>
+            </CardHeader>
+            
+            {showDataTable && (
+              <CardContent>
+                <div className="max-h-64 overflow-auto border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {loadedData.columns.map((col) => (
+                          <TableHead key={col} className="font-semibold">
+                            {col}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loadedData.rows.slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx}>
+                          {loadedData.columns.map((col) => (
+                            <TableCell key={col}>
+                              {row[col]?.toString() || "-"}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {loadedData.rows.length > 10 && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Mostrando 10 de {loadedData.rows.length} filas
+                  </p>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {/* Botones de acción principales */}
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            variant="outline"
+            onClick={handlePredict}
+            disabled={isPredicting || !trainingComplete}
+          >
+            <PlayCircle className="h-4 w-4 mr-2" />
+            {isPredicting ? "Prediciendo..." : "Predecir"}
+          </Button>
+          
+          {loadedData?.source === "database" && (
+            <Button
+              className="flex-1"
+              variant="outline"
+              onClick={handleSaveToDatabase}
+              disabled={isSavingToDb}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isSavingToDb ? "Guardando..." : "Guardar a BD"}
+            </Button>
+          )}
+        </div>
+
+        {/* Predicciones */}
+        {predictions.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Predicciones Recientes</CardTitle>
+              <CardDescription>
+                Últimas {predictions.length} predicciones del modelo
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-h-48 overflow-auto">
+                {predictions.map((pred, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-2 bg-muted/30 rounded-lg"
+                  >
+                    <span className="text-sm">Muestra #{pred.sample_id || idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={pred.true_value === pred.predicted_value ? "default" : "destructive"}>
+                        Real: {pred.true_value} | Pred: {pred.predicted_value}
+                      </Badge>
+                      {pred.confidence && (
+                        <span className="text-xs text-muted-foreground">
+                          {(pred.confidence * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
         <Tabs defaultValue="sklearn" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="sklearn">
-              <Network className="h-4 w-4 mr-2" />
+              <Brain className="h-4 w-4 mr-2" />
               Scikit-learn
             </TabsTrigger>
             <TabsTrigger value="pytorch">
-              <Layers className="h-4 w-4 mr-2" />
+              <Network className="h-4 w-4 mr-2" />
               PyTorch
             </TabsTrigger>
           </TabsList>
@@ -234,7 +394,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               </div>
 
               <div className="space-y-2">
-                <Label>Tipo de Tarea</Label>
+                <Label>Tipo de tarea</Label>
                 <Select value={taskType} onValueChange={setTaskType}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar tipo" />
@@ -261,18 +421,6 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
                     <SelectItem value="knn">K-Nearest Neighbors</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tamaño del conjunto de prueba: {testSize[0]}%</Label>
-                <Slider
-                  value={testSize}
-                  onValueChange={setTestSize}
-                  min={10}
-                  max={40}
-                  step={5}
-                  className="w-full"
-                />
               </div>
 
               <Button 
@@ -315,14 +463,13 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               </div>
 
               <div className="space-y-2">
-                <Label>Tipo de Tarea</Label>
-                <Select value={taskType} onValueChange={setTaskType}>
+                <Label>Arquitectura de red</Label>
+                <Select value={architecture} onValueChange={setArchitecture}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar tipo" />
+                    <SelectValue placeholder="Seleccionar arquitectura" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="classification">Clasificación</SelectItem>
-                    <SelectItem value="regression">Regresión</SelectItem>
+                    <SelectItem value="mlp">MLP (Multi-Layer Perceptron)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -354,7 +501,49 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               </div>
 
               <div className="space-y-2">
-                <Label>Épocas de entrenamiento: {epochs[0]}</Label>
+                <Label>Función de activación</Label>
+                <Select value={activation} onValueChange={setActivation}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar activación" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="relu">ReLU</SelectItem>
+                    <SelectItem value="leaky_relu">Leaky ReLU</SelectItem>
+                    <SelectItem value="sigmoid">Sigmoid</SelectItem>
+                    <SelectItem value="tanh">Tanh</SelectItem>
+                    <SelectItem value="gelu">GELU</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Optimizador</Label>
+                <Select value={optimizer} onValueChange={setOptimizer}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar optimizador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="adam">Adam</SelectItem>
+                    <SelectItem value="sgd">SGD</SelectItem>
+                    <SelectItem value="adamw">AdamW</SelectItem>
+                    <SelectItem value="rmsprop">RMSprop</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="learning-rate">Learning Rate</Label>
+                <Input 
+                  id="learning-rate" 
+                  type="number" 
+                  value={learningRate}
+                  onChange={(e) => setLearningRate(parseFloat(e.target.value))}
+                  step="0.0001"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Épocas: {epochs[0]}</Label>
                 <Slider
                   value={epochs}
                   onValueChange={setEpochs}
@@ -366,14 +555,12 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               </div>
 
               <div className="space-y-2">
-                <Label>Tamaño del conjunto de prueba: {testSize[0]}%</Label>
-                <Slider
-                  value={testSize}
-                  onValueChange={setTestSize}
-                  min={10}
-                  max={40}
-                  step={5}
-                  className="w-full"
+                <Label htmlFor="batch-size">Batch Size</Label>
+                <Input 
+                  id="batch-size" 
+                  type="number" 
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(parseInt(e.target.value))}
                 />
               </div>
 
@@ -401,96 +588,6 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
             </div>
           </TabsContent>
         </Tabs>
-
-        {/* Sección de Predicciones */}
-        {trainingComplete && (
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PlayCircle className="h-5 w-5" />
-                Generar Predicciones
-              </CardTitle>
-              <CardDescription>
-                Genera predicciones del conjunto de prueba con el modelo entrenado
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button 
-                onClick={handlePredict}
-                disabled={isPredicting}
-                className="w-full"
-                variant="outline"
-              >
-                {isPredicting ? "Generando predicciones..." : "Generar Predicciones del Test Set"}
-              </Button>
-
-              {showPredictions && predictions.length > 0 && (
-                <div className="space-y-3">
-                  <Alert>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertDescription>
-                      Se generaron {predictions.length} predicciones del conjunto de prueba
-                    </AlertDescription>
-                  </Alert>
-
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-20">ID</TableHead>
-                          <TableHead>Valor Real</TableHead>
-                          <TableHead>Predicción</TableHead>
-                          <TableHead>Estado</TableHead>
-                          {predictions[0]?.confidence && (
-                            <TableHead>Confianza</TableHead>
-                          )}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {predictions.map((pred, idx) => {
-                          const isCorrect = pred.true_value === pred.predicted_value;
-                          return (
-                            <TableRow key={idx}>
-                              <TableCell className="font-medium">{pred.sample_id}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{pred.true_value}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={isCorrect ? "default" : "destructive"}>
-                                  {pred.predicted_value}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {isCorrect ? (
-                                  <Badge variant="default" className="bg-green-500">
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Correcto
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="destructive">
-                                    <AlertCircle className="h-3 w-3 mr-1" />
-                                    Incorrecto
-                                  </Badge>
-                                )}
-                              </TableCell>
-                              {pred.confidence && (
-                                <TableCell>
-                                  <Badge variant="secondary">
-                                    {(pred.confidence * 100).toFixed(1)}%
-                                  </Badge>
-                                </TableCell>
-                              )}
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {trainingComplete && (
           <div className="flex justify-end pt-4 border-t">

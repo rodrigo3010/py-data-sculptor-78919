@@ -142,8 +142,8 @@ class SklearnModelTrainer:
             ]
             metrics["feature_importance"].sort(key=lambda x: x["importance"], reverse=True)
         
-        # Store test data for predictions
-        self.X_test = X_test
+        # Store SCALED test data for predictions (importante: guardar los datos escalados)
+        self.X_test = X_test  # Datos escalados
         self.y_test = y_test
         
         return metrics
@@ -250,20 +250,36 @@ class SklearnModelTrainer:
     
     def get_predictions_sample(self, n_samples: int = 10) -> Dict[str, Any]:
         """Get sample predictions from test set"""
+        print(f"DEBUG get_predictions_sample: hasattr X_test={hasattr(self, 'X_test')}, hasattr y_test={hasattr(self, 'y_test')}")
+        
         if not hasattr(self, 'X_test') or not hasattr(self, 'y_test'):
+            print("DEBUG: No X_test o y_test disponible")
             return {"predictions": []}
+        
+        if self.X_test is None or self.y_test is None:
+            print("DEBUG: X_test o y_test es None")
+            return {"predictions": []}
+        
+        if len(self.X_test) == 0 or len(self.y_test) == 0:
+            print("DEBUG: X_test o y_test está vacío")
+            return {"predictions": []}
+        
+        print(f"DEBUG: X_test shape={self.X_test.shape}, y_test shape={self.y_test.shape}")
         
         n_samples = min(n_samples, len(self.X_test))
         X_sample = self.X_test[:n_samples]
         y_true = self.y_test[:n_samples]
         
-        predictions = self.predict(X_sample)
+        print(f"DEBUG: Generando {n_samples} predicciones")
+        
+        # X_test is already scaled, so use model.predict directly
+        predictions = self.model.predict(X_sample)
         
         results = []
         for i in range(n_samples):
             pred_data = {
                 "sample_id": i + 1,
-                "true_value": float(y_true[i]) if not self.is_classification else int(y_true[i]),
+                "true_value": float(y_true.iloc[i]) if hasattr(y_true, 'iloc') else (float(y_true[i]) if not self.is_classification else int(y_true[i])),
                 "predicted_value": float(predictions[i]) if not self.is_classification else int(predictions[i])
             }
             
@@ -275,6 +291,7 @@ class SklearnModelTrainer:
             
             results.append(pred_data)
         
+        print(f"DEBUG: Generadas {len(results)} predicciones")
         return {"predictions": results}
     
     def save_model(self, model_name: str) -> str:
