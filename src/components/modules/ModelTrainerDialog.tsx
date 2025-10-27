@@ -108,6 +108,14 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
     }
   }, [loadedData]);
 
+  // Limpiar características seleccionadas cuando cambia la columna objetivo
+  useEffect(() => {
+    if (targetColumn) {
+      // Remover la columna objetivo de las características seleccionadas
+      setSelectedFeatures(prev => prev.filter(f => f !== targetColumn));
+    }
+  }, [targetColumn]);
+
   // Update available features when data or target column changes
   React.useEffect(() => {
     if (!loadedData?.columns) return;
@@ -177,13 +185,28 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
         setProgress(prev => Math.min(prev + 5, 90));
       }, 300);
 
-      // Entrenar modelo en el frontend
+      // Validar que se hayan seleccionado características
+      if (selectedFeatures.length === 0) {
+        toast({
+          title: "Error",
+          description: "Por favor, selecciona al menos una característica (X) para entrenar el modelo.",
+          variant: "destructive",
+        });
+        setIsTraining(false);
+        return;
+      }
+
+      console.log(`🎯 Entrenando con características: ${selectedFeatures.join(', ')}`);
+      console.log(`🎯 Objetivo: ${targetColumn}`);
+
+      // Entrenar modelo en el frontend con características seleccionadas
       const result = await trainModel(loadedData.rows, targetColumn, {
         taskType: taskType as 'regression' | 'classification',
         modelType: framework === "sklearn" ? sklearnModel : architecture,
         epochs: epochs[0],
         learningRate: learningRate,
-        testSize: testSize[0] / 100
+        testSize: testSize[0] / 100,
+        selectedFeatures: selectedFeatures
       });
 
       clearInterval(progressInterval);
@@ -413,24 +436,62 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
           <TabsContent value="sklearn" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Características (X)</Label>
-                <Select
-                  value={featureColumn}
-                  onValueChange={setFeatureColumn}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar características" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {loadedData?.columns
-                      .filter(col => col !== targetColumn) // Excluir columna objetivo
-                      .map((col) => (
-                        <SelectItem key={`sklearn-feature-${col}`} value={col}>
+                <div className="flex items-center justify-between">
+                  <Label>Características (X) - Selecciona múltiples</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const availableCols = loadedData?.columns.filter(col => col !== targetColumn) || [];
+                      if (selectedFeatures.length === availableCols.length) {
+                        setSelectedFeatures([]);
+                      } else {
+                        setSelectedFeatures(availableCols);
+                      }
+                    }}
+                    disabled={!loadedData || !targetColumn}
+                  >
+                    {selectedFeatures.length === (loadedData?.columns.filter(col => col !== targetColumn).length || 0)
+                      ? "Deseleccionar todas"
+                      : "Seleccionar todas"}
+                  </Button>
+                </div>
+                <div className="border rounded-lg p-3 max-h-[200px] overflow-y-auto space-y-2">
+                  {loadedData?.columns
+                    .filter(col => col !== targetColumn)
+                    .map((col) => (
+                      <div key={`sklearn-feature-${col}`} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`sklearn-feature-${col}`}
+                          checked={selectedFeatures.includes(col)}
+                          onChange={() => {
+                            setSelectedFeatures(prev =>
+                              prev.includes(col)
+                                ? prev.filter(f => f !== col)
+                                : [...prev, col]
+                            );
+                          }}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <label
+                          htmlFor={`sklearn-feature-${col}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
                           {col}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                        </label>
+                      </div>
+                    ))}
+                  {loadedData?.columns.filter(col => col !== targetColumn).length === 0 && (
+                    <p className="text-sm text-muted-foreground">Selecciona primero la columna objetivo</p>
+                  )}
+                </div>
+                {selectedFeatures.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    ✅ {selectedFeatures.length} característica(s) seleccionada(s): {selectedFeatures.join(', ')}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -522,24 +583,62 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
           <TabsContent value="pytorch" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Características (X)</Label>
-                <Select
-                  value={featureColumn}
-                  onValueChange={setFeatureColumn}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar características" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {loadedData?.columns
-                      .filter(col => col !== targetColumn) // Excluir columna objetivo
-                      .map((col) => (
-                        <SelectItem key={`feature-${col}`} value={col}>
+                <div className="flex items-center justify-between">
+                  <Label>Características (X) - Selecciona múltiples</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const availableCols = loadedData?.columns.filter(col => col !== targetColumn) || [];
+                      if (selectedFeatures.length === availableCols.length) {
+                        setSelectedFeatures([]);
+                      } else {
+                        setSelectedFeatures(availableCols);
+                      }
+                    }}
+                    disabled={!loadedData || !targetColumn}
+                  >
+                    {selectedFeatures.length === (loadedData?.columns.filter(col => col !== targetColumn).length || 0)
+                      ? "Deseleccionar todas"
+                      : "Seleccionar todas"}
+                  </Button>
+                </div>
+                <div className="border rounded-lg p-3 max-h-[200px] overflow-y-auto space-y-2">
+                  {loadedData?.columns
+                    .filter(col => col !== targetColumn)
+                    .map((col) => (
+                      <div key={`pytorch-feature-${col}`} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`pytorch-feature-${col}`}
+                          checked={selectedFeatures.includes(col)}
+                          onChange={() => {
+                            setSelectedFeatures(prev =>
+                              prev.includes(col)
+                                ? prev.filter(f => f !== col)
+                                : [...prev, col]
+                            );
+                          }}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <label
+                          htmlFor={`pytorch-feature-${col}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
                           {col}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                        </label>
+                      </div>
+                    ))}
+                  {loadedData?.columns.filter(col => col !== targetColumn).length === 0 && (
+                    <p className="text-sm text-muted-foreground">Selecciona primero la columna objetivo</p>
+                  )}
+                </div>
+                {selectedFeatures.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    ✅ {selectedFeatures.length} característica(s) seleccionada(s): {selectedFeatures.join(', ')}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

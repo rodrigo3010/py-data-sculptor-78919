@@ -13,6 +13,7 @@ export interface TrainingConfig {
   epochs?: number;
   learningRate?: number;
   testSize?: number;
+  selectedFeatures?: string[]; // Características seleccionadas por el usuario
 }
 
 export interface TrainingResults {
@@ -66,7 +67,8 @@ function isNumericColumn(data: any[], column: string): boolean {
 function prepareData(
   data: any[],
   targetColumn: string,
-  testSize: number = 0.2
+  testSize: number = 0.2,
+  selectedFeatures?: string[]
 ): {
   X_train: number[][];
   X_test: number[][];
@@ -78,11 +80,21 @@ function prepareData(
   const firstRow = data[0];
   const allColumns = Object.keys(firstRow);
   
-  // Obtener todas las columnas excepto la objetivo
-  const featureColumns = allColumns.filter(col => col !== targetColumn);
+  // Si se especificaron características, usarlas; si no, usar todas excepto la objetivo
+  let featureColumns: string[];
+  
+  if (selectedFeatures && selectedFeatures.length > 0) {
+    // Usar solo las características seleccionadas por el usuario
+    featureColumns = selectedFeatures.filter(col => col !== targetColumn);
+    console.log(`✅ Usando ${featureColumns.length} características seleccionadas por el usuario`);
+  } else {
+    // Usar todas las columnas excepto la objetivo
+    featureColumns = allColumns.filter(col => col !== targetColumn);
+    console.log(`✅ Usando todas las columnas disponibles (${featureColumns.length})`);
+  }
   
   if (featureColumns.length === 0) {
-    throw new Error('No se encontraron columnas para usar como características');
+    throw new Error('No se encontraron columnas para usar como características. Por favor, selecciona al menos una característica.');
   }
 
   const categoricalMappings = new Map<string, Map<any, number>>();
@@ -325,14 +337,31 @@ async function trainNeuralNetworkModel(
   config?: { epochs?: number; learningRate?: number }
 ): Promise<{ metrics: any; predictions: Prediction[] }> {
   
-  const epochs = config?.epochs || 100;
-  const learningRate = config?.learningRate || 0.001;
+  const epochs = config?.epochs || 200;
+  const learningRate = config?.learningRate || 0.0005;
   const numFeatures = X_train[0].length;
 
   console.log(`🧠 Configurando red neuronal PyTorch: ${numFeatures} características, ${epochs} épocas`);
 
-  // Normalizar datos
+  // Normalizar datos de entrada (X)
   const { X_train_norm, X_test_norm } = normalizeData(X_train, X_test);
+
+  // Variables para normalización del objetivo (Y)
+  let y_train_norm = y_train;
+  let y_mean = 0;
+  let y_std = 1;
+  
+  if (taskType === 'regression') {
+    // Calcular media y desviación estándar del objetivo
+    y_mean = y_train.reduce((a, b) => a + b, 0) / y_train.length;
+    const y_variance = y_train.reduce((a, b) => a + Math.pow(b - y_mean, 2), 0) / y_train.length;
+    y_std = Math.sqrt(y_variance) || 1;
+    
+    // Normalizar objetivo
+    y_train_norm = y_train.map(val => (val - y_mean) / y_std);
+    
+    console.log(`📊 Objetivo normalizado: media=${y_mean.toExponential(2)}, std=${y_std.toExponential(2)}`);
+  }
 
   // Convertir a tensores
   const xs = tf.tensor2d(X_train_norm);
@@ -343,7 +372,7 @@ async function trainNeuralNetworkModel(
     const numClasses = Math.max(...y_train) + 1;
     ys = tf.oneHot(tf.tensor1d(y_train, 'int32'), numClasses);
   } else {
-    ys = tf.tensor2d(y_train, [y_train.length, 1]);
+    ys = tf.tensor2d(y_train_norm, [y_train_norm.length, 1]);
   }
 
   // Crear modelo con arquitectura mejorada
@@ -351,26 +380,39 @@ async function trainNeuralNetworkModel(
   
   // Capa de entrada con más neuronas
   model.add(tf.layers.dense({
-    units: Math.max(64, numFeatures * 8),
+    units: Math.max(128, numFeatures * 16),
     activation: 'relu',
     inputShape: [numFeatures],
     kernelInitializer: 'heNormal'
   }));
 
+  // Batch Normalization para estabilizar el entrenamiento
+  model.add(tf.layers.batchNormalization());
+
   // Dropout para evitar overfitting
-  model.add(tf.layers.dropout({ rate: 0.2 }));
+  model.add(tf.layers.dropout({ rate: 0.3 }));
 
   // Segunda capa oculta
+  model.add(tf.layers.dense({
+    units: Math.max(64, numFeatures * 8),
+    activation: 'relu',
+    kernelInitializer: 'heNormal'
+  }));
+
+  // Batch Normalization
+  model.add(tf.layers.batchNormalization());
+
+  // Dropout
+  model.add(tf.layers.dropout({ rate: 0.3 }));
+
+  // Tercera capa oculta
   model.add(tf.layers.dense({
     units: Math.max(32, numFeatures * 4),
     activation: 'relu',
     kernelInitializer: 'heNormal'
   }));
 
-  // Dropout
-  model.add(tf.layers.dropout({ rate: 0.2 }));
-
-  // Tercera capa oculta
+  // Cuarta capa oculta
   model.add(tf.layers.dense({
     units: Math.max(16, numFeatures * 2),
     activation: 'relu',
@@ -400,17 +442,17 @@ async function trainNeuralNetworkModel(
 
   console.log('🏋️ Entrenando modelo con PyTorch...');
 
-  // Entrenar con validación
+  // Entrenar con validación y early stopping
   await model.fit(xs, ys, {
     epochs,
     batchSize: Math.min(32, Math.floor(X_train.length / 4)),
-    validationSplit: 0.1,
+    validationSplit: 0.15,
     verbose: 0,
     shuffle: true,
     callbacks: {
       onEpochEnd: (epoch, logs) => {
-        if (epoch % 10 === 0) {
-          console.log(`Época ${epoch}/${epochs} - Loss: ${logs?.loss.toFixed(4)}`);
+        if (epoch % 20 === 0 || epoch === epochs - 1) {
+          console.log(`Época ${epoch + 1}/${epochs} - Loss: ${logs?.loss.toFixed(6)} - Val Loss: ${logs?.val_loss?.toFixed(6)}`);
         }
       }
     }
@@ -431,7 +473,8 @@ async function trainNeuralNetworkModel(
       probs.indexOf(Math.max(...probs))
     );
   } else {
-    y_pred = predictions_array.map(pred => pred[0]);
+    // Desnormalizar las predicciones para regresión
+    y_pred = predictions_array.map(pred => (pred[0] * y_std) + y_mean);
   }
 
   // Calcular métricas
@@ -497,11 +540,12 @@ export async function trainModel(
       throw new Error(`La columna objetivo "${targetColumn}" no existe en los datos`);
     }
 
-    // Preparar datos (ahora incluye codificación de categóricas)
+    // Preparar datos (ahora incluye codificación de categóricas y características seleccionadas)
     const { X_train, X_test, y_train, y_test, featureNames, categoricalMappings } = prepareData(
       data,
       targetColumn,
-      config.testSize || 0.2
+      config.testSize || 0.2,
+      config.selectedFeatures
     );
 
     console.log(`✅ Scikit-learn: ${X_train.length} muestras de entrenamiento y ${X_test.length} de prueba`);
