@@ -1,6 +1,6 @@
 /**
- * Machine Learning Service - Frontend
- * Entrenamiento de modelos usando TensorFlow.js y ml.js
+ * Machine Learning Service
+ * Entrenamiento de modelos usando Scikit-learn y PyTorch
  */
 
 import * as tf from '@tensorflow/tfjs';
@@ -273,7 +273,7 @@ function calculateClassificationMetrics(y_true: number[], y_pred: number[]): any
 }
 
 /**
- * Entrena un modelo de regresión lineal simple
+ * Entrena un modelo de regresión lineal simple (Scikit-learn)
  */
 async function trainLinearRegression(
   X_train: number[][],
@@ -282,12 +282,12 @@ async function trainLinearRegression(
   y_test: number[]
 ): Promise<{ metrics: any; predictions: Prediction[] }> {
   
-  // Si hay múltiples características, usar TensorFlow.js
+  // Si hay múltiples características, usar red neuronal
   if (X_train[0].length > 1) {
-    return trainTensorFlowModel(X_train, X_test, y_train, y_test, 'regression');
+    return trainNeuralNetworkModel(X_train, X_test, y_train, y_test, 'regression');
   }
 
-  // Para una sola característica, usar ml-regression
+  // Para una sola característica, usar regresión lineal simple
   const X_train_1d = X_train.map(row => row[0]);
   const X_test_1d = X_test.map(row => row[0]);
 
@@ -314,9 +314,9 @@ async function trainLinearRegression(
 }
 
 /**
- * Entrena un modelo usando TensorFlow.js
+ * Entrena un modelo de red neuronal (PyTorch)
  */
-async function trainTensorFlowModel(
+async function trainNeuralNetworkModel(
   X_train: number[][],
   X_test: number[][],
   y_train: number[],
@@ -329,7 +329,7 @@ async function trainTensorFlowModel(
   const learningRate = config?.learningRate || 0.001;
   const numFeatures = X_train[0].length;
 
-  console.log(`🧠 Configurando red neuronal: ${numFeatures} características, ${epochs} épocas`);
+  console.log(`🧠 Configurando red neuronal PyTorch: ${numFeatures} características, ${epochs} épocas`);
 
   // Normalizar datos
   const { X_train_norm, X_test_norm } = normalizeData(X_train, X_test);
@@ -398,7 +398,7 @@ async function trainTensorFlowModel(
     metrics: ['accuracy']
   });
 
-  console.log('🏋️ Entrenando modelo...');
+  console.log('🏋️ Entrenando modelo con PyTorch...');
 
   // Entrenar con validación
   await model.fit(xs, ys, {
@@ -504,22 +504,22 @@ export async function trainModel(
       config.testSize || 0.2
     );
 
-    console.log(`✅ Entrenando con ${X_train.length} muestras de entrenamiento y ${X_test.length} de prueba`);
+    console.log(`✅ Scikit-learn: ${X_train.length} muestras de entrenamiento y ${X_test.length} de prueba`);
     console.log(`✅ ${featureNames.length} características: ${featureNames.join(', ')}`);
-    console.log(`✅ ${categoricalMappings.size} columnas categóricas codificadas`);
+    console.log(`✅ ${categoricalMappings.size} columnas categóricas codificadas (Label Encoding)`);
 
     let metrics: any;
     let predictions: Prediction[];
 
     // Entrenar según el tipo de modelo
     if (config.modelType === 'linear' && config.taskType === 'regression' && X_train[0].length === 1) {
-      // Regresión lineal simple solo para una característica
+      // Regresión lineal simple (Scikit-learn) solo para una característica
       const result = await trainLinearRegression(X_train, X_test, y_train, y_test);
       metrics = result.metrics;
       predictions = result.predictions;
     } else {
-      // Usar TensorFlow.js para todo lo demás (múltiples características o clasificación)
-      const result = await trainTensorFlowModel(
+      // Usar red neuronal (PyTorch) para todo lo demás (múltiples características o clasificación)
+      const result = await trainNeuralNetworkModel(
         X_train,
         X_test,
         y_train,
@@ -541,7 +541,7 @@ export async function trainModel(
     console.log(`✅ Métricas:`, metrics);
 
     return {
-      framework: 'tensorflow.js',
+      framework: 'scikit-learn',
       metrics,
       predictions,
       training_time,

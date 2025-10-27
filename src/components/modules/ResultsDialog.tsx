@@ -105,7 +105,7 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
         description: `Modelo con ${predictions.length} predicciones guardado`,
       });
     } catch (error: any) {
-      console.error("Error guardando en IndexedDB:", error);
+      console.error("Error guardando:", error);
       toast({
         title: "Error al guardar",
         description: error.message || "Error desconocido",
@@ -521,7 +521,7 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
             className="bg-gradient-primary"
           >
             <Save className="h-4 w-4 mr-2" />
-            {loading ? "Guardando..." : "Guardar en IndexedDB"}
+            {loading ? "Guardando..." : "Guardar"}
           </Button>
         </div>
       </DialogContent>

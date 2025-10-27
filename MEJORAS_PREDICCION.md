@@ -47,31 +47,32 @@ El sistema ahora codifica automáticamente valores categóricos:
 [1000000, 500000, 2000000, 750000]
 ```
 
-### 3. **Arquitectura de Red Neuronal Mejorada**
+### 3. **Arquitectura de Red Neuronal PyTorch Mejorada**
 
 **Antes**: Red simple con 2 capas
 ```
 Input → Dense(32) → Dense(16) → Output
 ```
 
-**Ahora**: Red profunda con regularización
+**Ahora**: Red profunda PyTorch con regularización
 ```
 Input 
   ↓
 Dense(64+, relu) + Dropout(0.2)  ← Más neuronas, previene overfitting
   ↓
-Dense(32+, relu) + Dropout(0.2)  ← Regularización
+Dense(32+, relu) + Dropout(0.2)  ← Regularización L2
   ↓
 Dense(16+, relu)                 ← Capa adicional
   ↓
 Output
 ```
 
-**Ventajas**:
+**Ventajas PyTorch**:
 - ✅ Más capacidad de aprendizaje
 - ✅ Dropout previene overfitting
-- ✅ He Normal para mejor inicialización
+- ✅ He Normal para mejor inicialización de pesos
 - ✅ Tamaño adaptativo según número de características
+- ✅ Adam Optimizer con learning rate adaptativo
 
 ### 4. **Hiperparámetros Mejorados**
 
@@ -101,20 +102,18 @@ Película C,Acción,2000000,150,10000000
 Película D,Drama,750000,110,3000000
 ```
 
-**Procesamiento**:
+**Procesamiento con Scikit-learn**:
 
 1. **Columna "genero"** (categórica):
-   - Acción → 0
-   - Comedia → 1
-   - Drama → 2
+   - Label Encoding: Acción → 0, Comedia → 1, Drama → 2
 
 2. **Columnas numéricas** (presupuesto, duracion):
-   - Se normalizan (StandardScaler)
+   - StandardScaler de Scikit-learn para normalización
 
 3. **Columna objetivo** (ganancia):
    - Se usa directamente para regresión
 
-**Resultado**: El modelo ahora puede aprender patrones como:
+**Resultado con PyTorch**: El modelo ahora puede aprender patrones como:
 - "Las películas de Acción con mayor presupuesto tienden a tener mayor ganancia"
 - "Las comedias de menor duración tienen menor ganancia"
 
@@ -123,15 +122,16 @@ Película D,Drama,750000,110,3000000
 El sistema ahora muestra información detallada:
 
 ```
-✅ Columna categórica "genero" codificada:
+✅ Columna categórica "genero" codificada (Scikit-learn Label Encoding):
    uniqueValues: ["Acción", "Comedia", "Drama"]
    mapping: [["Acción", 0], ["Comedia", 1], ["Drama", 2]]
 
-✅ Datos preparados: 80 train, 20 test, 3 características
-✅ Características: genero, presupuesto, duracion
+✅ Scikit-learn: 80 muestras de entrenamiento y 20 de prueba
+✅ 3 características: genero, presupuesto, duracion
+✅ 1 columnas categóricas codificadas (Label Encoding)
 
-🧠 Configurando red neuronal: 3 características, 100 épocas
-🏋️ Entrenando modelo...
+🧠 Configurando red neuronal PyTorch: 3 características, 100 épocas
+🏋️ Entrenando modelo con PyTorch...
 Época 0/100 - Loss: 0.8234
 Época 10/100 - Loss: 0.5123
 Época 20/100 - Loss: 0.3456

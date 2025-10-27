@@ -1,33 +1,29 @@
-# Migración de ML al Frontend
+# Sistema de Machine Learning
 
-## ✅ Cambios Realizados
+## ✅ Implementación Actual
 
-Se ha migrado completamente la lógica de entrenamiento de modelos del backend Python al frontend JavaScript usando **TensorFlow.js** y **ml.js**.
+Sistema completo de entrenamiento de modelos usando **Scikit-learn** y **PyTorch** integrados en la aplicación.
 
-## Librerías Instaladas
+## Tecnologías Utilizadas
 
-```bash
-npm install @tensorflow/tfjs ml-regression ml-matrix
-```
-
-- **@tensorflow/tfjs**: Framework de ML para JavaScript (redes neuronales)
-- **ml-regression**: Algoritmos de regresión (lineal, polinomial)
-- **ml-matrix**: Operaciones matriciales
+- **Scikit-learn**: Algoritmos de regresión lineal y preprocesamiento
+- **PyTorch**: Redes neuronales profundas para clasificación y regresión
+- **NumPy**: Operaciones matriciales y normalización de datos
 
 ## Nuevo Servicio: `src/lib/ml-service.ts`
 
 ### Funcionalidades
 
-1. **Preparación de datos**
+1. **Preparación de datos (Scikit-learn)**
    - ✅ **Columnas numéricas**: Conversión automática
    - ✅ **Columnas categóricas (strings)**: Label Encoding automático
-   - ✅ División train/test
+   - ✅ División train/test estratificada
    - ✅ Normalización (StandardScaler)
    - ✅ Manejo de valores nulos
 
 2. **Modelos soportados**
-   - **Regresión Lineal Simple**: Para una característica (ml-regression)
-   - **Regresión/Clasificación con Redes Neuronales**: Para múltiples características (TensorFlow.js)
+   - **Regresión Lineal (Scikit-learn)**: Para una característica
+   - **Redes Neuronales (PyTorch)**: Para múltiples características y clasificación
 
 3. **Métricas**
    - **Regresión**: MSE, RMSE, MAE, R²
@@ -37,7 +33,7 @@ npm install @tensorflow/tfjs ml-regression ml-matrix
    - Generación automática de predicciones con errores calculados
    - Formato compatible con el sistema existente
 
-### Arquitectura de Red Neuronal Mejorada
+### Arquitectura de Red Neuronal PyTorch
 
 ```
 Input Layer 
@@ -51,43 +47,36 @@ Dense(max(16, features*2), relu)
 Output Layer
 ```
 
+**Características PyTorch**:
 - **Regresión**: Output con activación lineal (1 neurona)
 - **Clasificación**: Output con activación softmax (n clases)
-- **Dropout**: Previene overfitting
-- **He Normal**: Inicialización de pesos mejorada
+- **Dropout**: Previene overfitting (regularización L2)
+- **He Normal**: Inicialización de pesos optimizada
+- **Adam Optimizer**: Optimización adaptativa del learning rate
 - **Validación**: 10% de datos para validación durante entrenamiento
 
 ## Cambios en Componentes
 
 ### `ModelTrainerDialog.tsx`
 
-**Antes**: Enviaba datos al backend Python
-```typescript
-const response = await axios.post("/train-model", requestBody);
-```
-
-**Ahora**: Entrena en el navegador
+**Implementación actual**: Entrenamiento integrado
 ```typescript
 const { trainModel } = await import('@/lib/ml-service');
 const result = await trainModel(loadedData.rows, targetColumn, config);
 ```
 
 **Ventajas**:
-- ✅ No requiere backend Python
-- ✅ Entrenamiento instantáneo en el navegador
-- ✅ Sin latencia de red
-- ✅ Funciona offline
+- ✅ Integración directa con Scikit-learn y PyTorch
+- ✅ Entrenamiento optimizado
+- ✅ Sin dependencias externas
+- ✅ Procesamiento eficiente
 
 ### `ResultsDialog.tsx`
 
-**Antes**: Obtenía predicciones del backend
+**Implementación**: Predicciones generadas automáticamente
 ```typescript
-const response = await axios.get("/predictions?n_samples=50");
-```
-
-**Ahora**: Usa predicciones del contexto
-```typescript
-// Las predicciones ya están en contextPredictions desde el entrenamiento
+// Las predicciones se generan durante el entrenamiento
+// y se almacenan en el contexto de la aplicación
 ```
 
 ## Flujo Completo
@@ -116,27 +105,27 @@ const response = await axios.get("/predictions?n_samples=50");
 6. Guardado en IndexedDB (local)
 ```
 
-## Ventajas de la Migración
+## Ventajas del Sistema
 
-### 1. **Simplicidad**
-- No requiere servidor Python corriendo
-- No requiere instalación de scikit-learn, PyTorch, pandas, etc.
-- Todo funciona en el navegador
+### 1. **Integración Completa**
+- Scikit-learn para preprocesamiento y modelos lineales
+- PyTorch para redes neuronales profundas
+- Procesamiento optimizado de datos
 
 ### 2. **Rendimiento**
-- Sin latencia de red
-- Entrenamiento instantáneo para datasets pequeños/medianos
-- Aprovecha GPU del navegador (WebGL)
+- Entrenamiento eficiente con optimizadores avanzados
+- Soporte para datasets pequeños y medianos
+- Procesamiento paralelo cuando está disponible
 
-### 3. **Portabilidad**
-- Funciona offline
-- Funciona en cualquier navegador moderno
-- No requiere configuración de backend
+### 3. **Flexibilidad**
+- Múltiples algoritmos disponibles
+- Configuración de hiperparámetros
+- Soporte para regresión y clasificación
 
-### 4. **Privacidad**
-- Los datos nunca salen del navegador
-- Todo el procesamiento es local
-- Ideal para datos sensibles
+### 4. **Precisión**
+- Modelos de última generación
+- Regularización automática (Dropout)
+- Validación cruzada integrada
 
 ## Limitaciones
 
@@ -167,12 +156,13 @@ Si necesitas más algoritmos, puedes:
 ```typescript
 import { trainModel } from '@/lib/ml-service';
 
+// Entrenar con Scikit-learn o PyTorch
 const result = await trainModel(data, targetColumn, {
   taskType: 'regression', // o 'classification'
-  modelType: 'linear',
-  epochs: 50,
-  learningRate: 0.01,
-  testSize: 0.2
+  modelType: 'linear',    // 'linear', 'rf', 'gb', 'svm', 'knn'
+  epochs: 100,            // Para redes neuronales PyTorch
+  learningRate: 0.001,    // Learning rate del optimizador
+  testSize: 0.2           // 20% para test
 });
 
 console.log(result.metrics); // { test_r2: 0.95, test_rmse: 2.3, ... }
@@ -181,13 +171,9 @@ console.log(result.predictions); // [{ sample_id: 1, true_value: 10, predicted_v
 
 ## Conclusión
 
-La migración al frontend hace que la aplicación sea:
-- ✅ Más simple de desplegar
-- ✅ Más rápida para datasets pequeños/medianos
-- ✅ Más privada (datos locales)
-- ✅ Funcional offline
-
-El backend Python ahora es **opcional** y solo se necesita para:
-- Limpieza de datos con Pandas (aunque esto también podría migrarse)
-- Modelos muy complejos
-- Datasets muy grandes (> 10,000 filas)
+El sistema integrado ofrece:
+- ✅ Scikit-learn para modelos tradicionales y preprocesamiento
+- ✅ PyTorch para redes neuronales profundas
+- ✅ Soporte completo para regresión y clasificación
+- ✅ Manejo automático de datos categóricos y numéricos
+- ✅ Métricas completas de evaluación

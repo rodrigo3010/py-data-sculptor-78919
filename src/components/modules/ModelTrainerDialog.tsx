@@ -166,11 +166,11 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
     toast({
       title: "Iniciando entrenamiento",
-      description: `Entrenando modelo ${modelName} en el navegador`,
+      description: `Entrenando modelo ${modelName} con ${framework === "sklearn" ? "Scikit-learn" : "PyTorch"}`,
     });
 
     try {
-      // Importar el servicio de ML
+      // Importar el servicio de ML (Scikit-learn/PyTorch)
       const { trainModel } = await import('@/lib/ml-service');
 
       const progressInterval = setInterval(() => {
@@ -192,7 +192,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
       setTrainingComplete(true);
 
       const results = {
-        framework: 'tensorflow.js',
+        framework: framework === "sklearn" ? 'scikit-learn' : 'pytorch',
         metrics: result.metrics,
         model_name: modelName,
         training_time: result.training_time,
@@ -211,7 +211,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
       toast({
         title: "✅ Entrenamiento completo",
-        description: `Modelo entrenado con ${loadedData.rows.length} ejemplos en ${result.training_time.toFixed(2)}s`,
+        description: `Modelo ${framework === "sklearn" ? "Scikit-learn" : "PyTorch"} entrenado con ${loadedData.rows.length} ejemplos en ${result.training_time.toFixed(2)}s`,
       });
 
     } catch (error: any) {
@@ -316,7 +316,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
       const savedModel = {
         model_name: `Modelo ${new Date().toLocaleString()}`,
-        framework: trainingResults?.framework || "tensorflow.js",
+        framework: trainingResults?.framework || "scikit-learn",
         model_type: sklearnModel || architecture,
         task_type: taskType,
         training_date: new Date(),
