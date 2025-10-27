@@ -28,6 +28,7 @@ import { Brain, Network, Layers, PlayCircle, CheckCircle2, AlertCircle, Save } f
 // Custom Hooks
 import { useData } from "@/contexts/DataContext";
 import { db } from "@/lib/indexeddb";
+import { DatasetStatus } from "@/components/DatasetStatus";
 
 // Types
 interface ModelTrainerDialogProps {
@@ -62,7 +63,7 @@ declare module "@/contexts/DataContext" {
 export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrainerDialogProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { loadedData, setTrainingResults, setPredictions, completeModule } = useData();
+  const { loadedData, setTrainingResults, setPredictions, completeModule, completedModules } = useData();
 
   // Training state
   const [epochs, setEpochs] = useState<number[]>([50]);
@@ -198,6 +199,8 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
       console.log(`🎯 Entrenando con características: ${selectedFeatures.join(', ')}`);
       console.log(`🎯 Objetivo: ${targetColumn}`);
+      console.log(`📊 Dataset: ${loadedData.rows.length} filas × ${loadedData.columns.length} columnas`);
+      console.log(`✅ Datos limpios: ${completedModules?.cleaner ? 'Sí' : 'No'}`);
 
       // Entrenar modelo en el frontend con características seleccionadas
       const result = await trainModel(loadedData.rows, targetColumn, {
@@ -350,14 +353,29 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
         total_predictions: predictions.length,
         avg_error: errors.length > 0 ? errors.reduce((a: number, b: number) => a + b, 0) / errors.length : 0,
         avg_error_percentage: errorPercentages.length > 0 ? errorPercentages.reduce((a: number, b: number) => a + b, 0) / errorPercentages.length : 0,
-        training_results: trainingResults
+        training_results: trainingResults,
+        dataset: loadedData ? {
+          tableName: loadedData.tableName,
+          columns: loadedData.columns,
+          rows: loadedData.rows,
+          totalRows: loadedData.rows.length
+        } : undefined
       };
+
+      console.log("💾 Guardando modelo con dataset:", {
+        predictions: predictions.length,
+        dataset: savedModel.dataset ? {
+          tableName: savedModel.dataset.tableName,
+          rows: savedModel.dataset.totalRows,
+          columns: savedModel.dataset.columns.length
+        } : 'No dataset'
+      });
 
       await db.saveModel(savedModel);
 
       toast({
         title: "✅ Modelo Guardado",
-        description: `Modelo con ${predictions.length} predicciones guardado exitosamente`,
+        description: `Modelo con ${predictions.length} predicciones y dataset (${loadedData?.rows.length || 0} filas) guardado exitosamente`,
       });
     } catch (error: any) {
       console.error("Error guardando modelo:", error);
@@ -752,49 +770,53 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
         {/* Dataset cargado */}
         {loadedData && (
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">Dataset cargado</CardTitle>
-              <CardDescription className="text-xs">
-                {loadedData.tableName} • {loadedData.rows?.length ?? 0} filas × {loadedData.columns?.length ?? 0} columnas
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="border rounded-lg overflow-auto max-h-40 mb-2">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr>
-                      {loadedData.columns?.slice(0, 8).map((col) => (
-                        <th key={col} className="text-left px-2 py-1">{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(loadedData.rows || []).slice(0, 5).map((row, idx) => (
-                      <tr key={idx}>
+          <div className="mt-4 space-y-4">
+            <DatasetStatus showDetails={true} />
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Vista Previa de Datos</CardTitle>
+                <CardDescription className="text-xs">
+                  Primeras 5 filas del dataset
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="border rounded-lg overflow-auto max-h-40 mb-2">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
                         {loadedData.columns?.slice(0, 8).map((col) => (
-                          <td key={col} className="px-2 py-1">{String(row[col] ?? "")}</td>
+                          <th key={col} className="text-left px-2 py-1">{col}</th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(loadedData.rows || []).slice(0, 5).map((row, idx) => (
+                        <tr key={idx}>
+                          {loadedData.columns?.slice(0, 8).map((col) => (
+                            <td key={col} className="px-2 py-1">{String(row[col] ?? "")}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    // Close the dialog and navigate to the full table view
-                    onOpenChange(false);
-                    navigate("/table-view");
-                  }}
-                >
-                  Ver tabla completa
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      // Close the dialog and navigate to the full table view
+                      onOpenChange(false);
+                      navigate("/table-view");
+                    }}
+                  >
+                    Ver tabla completa
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Sección de Resultados del Entrenamiento */}

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useData } from "@/contexts/DataContext";
+import { DatasetStatus } from "@/components/DatasetStatus";
 
 const TableView = () => {
   const navigate = useNavigate();
@@ -21,10 +22,10 @@ const TableView = () => {
   // Función para resaltar coincidencias
   const highlightMatch = (text: string, query: string) => {
     if (!query) return text;
-    
+
     const parts = text.split(new RegExp(`(${query})`, 'gi'));
-    return parts.map((part, index) => 
-      part.toLowerCase() === query.toLowerCase() 
+    return parts.map((part, index) =>
+      part.toLowerCase() === query.toLowerCase()
         ? <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 px-0.5 rounded">{part}</mark>
         : part
     );
@@ -33,9 +34,9 @@ const TableView = () => {
   // Filtrar filas basándose en la búsqueda global
   const filteredRows = useMemo(() => {
     if (!searchQuery.trim()) return rows;
-    
+
     const query = searchQuery.toLowerCase().trim();
-    
+
     return rows.filter((row) => {
       // Buscar en todas las columnas
       return columns.some((column) => {
@@ -49,21 +50,23 @@ const TableView = () => {
     <div className="min-h-screen bg-background">
       <header className="border-b sticky top-0 bg-background z-10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/")}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                {tableName}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                {filteredRows.length} de {rows.length} registros
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("/")}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                  {tableName}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {filteredRows.length} de {rows.length} registros • {columns.length} columnas
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -71,6 +74,9 @@ const TableView = () => {
 
       <main className="container mx-auto px-4 py-6">
         <div className="space-y-4">
+          {/* Estado del dataset */}
+          <DatasetStatus showDetails={true} />
+
           {/* Barra de búsqueda global */}
           <div className="bg-card rounded-lg p-4 shadow-card">
             <div className="flex items-center gap-3">
@@ -121,7 +127,7 @@ const TableView = () => {
                           const cellValue = typeof row[column] === "object"
                             ? JSON.stringify(row[column])
                             : String(row[column] ?? "");
-                          
+
                           return (
                             <TableCell key={column} className="whitespace-nowrap">
                               {searchQuery ? highlightMatch(cellValue, searchQuery.trim()) : cellValue}
@@ -136,7 +142,7 @@ const TableView = () => {
                         colSpan={columns.length}
                         className="text-center py-8 text-muted-foreground"
                       >
-                        {searchQuery 
+                        {searchQuery
                           ? `No se encontraron resultados para "${searchQuery}"`
                           : "No hay registros para mostrar"}
                       </TableCell>

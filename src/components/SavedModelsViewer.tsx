@@ -5,9 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db, SavedModel } from "@/lib/indexeddb";
-import { Trash2, Download, Upload, BarChart3, LineChart, TrendingUp } from "lucide-react";
+import { Trash2, Download, Upload, BarChart3, LineChart, TrendingUp, Database } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart as RechartsBar, Bar, LineChart as RechartsLine, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 
 interface SavedModelsViewerProps {
   open: boolean;
@@ -19,6 +22,7 @@ export const SavedModelsViewer = ({ open, onOpenChange }: SavedModelsViewerProps
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<SavedModel | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showDataset, setShowDataset] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -32,6 +36,11 @@ export const SavedModelsViewer = ({ open, onOpenChange }: SavedModelsViewerProps
     try {
       await db.init();
       const loadedModels = await db.getModels();
+      console.log("📊 Modelos cargados:", loadedModels.map(m => ({
+        name: m.model_name,
+        hasDataset: !!m.dataset,
+        datasetRows: m.dataset?.totalRows || 0
+      })));
       setModels(loadedModels.sort((a, b) => new Date(b.training_date).getTime() - new Date(a.training_date).getTime()));
     } catch (error) {
       console.error("Error cargando modelos:", error);
@@ -212,17 +221,42 @@ export const SavedModelsViewer = ({ open, onOpenChange }: SavedModelsViewerProps
                       </div>
                     </div>
 
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedModel(model);
-                        setShowDetails(true);
-                      }}
-                    >
-                      <BarChart3 className="h-4 w-4 mr-2" />
-                      Ver Gráficos y Detalles
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedModel(model);
+                          setShowDetails(true);
+                        }}
+                      >
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        Ver Gráficos
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (model.dataset) {
+                            setSelectedModel(model);
+                            setShowDataset(true);
+                          } else {
+                            toast({
+                              title: "Dataset no disponible",
+                              description: "Este modelo fue guardado sin el dataset. Entrena un nuevo modelo para guardar el dataset.",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        disabled={!model.dataset}
+                      >
+                        <Database className="h-4 w-4 mr-2" />
+                        Ver Tabla
+                        {model.dataset && (
+                          <Badge variant="secondary" className="ml-2 text-xs">
+                            {model.dataset.totalRows} filas
+                          </Badge>
+                        )}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -232,12 +266,131 @@ export const SavedModelsViewer = ({ open, onOpenChange }: SavedModelsViewerProps
 
         {/* Dialog de detalles del modelo */}
         {selectedModel && (
-          <ModelDetailsDialog
-            model={selectedModel}
-            open={showDetails}
-            onOpenChange={setShowDetails}
-          />
+          <>
+            <ModelDetailsDialog
+              model={selectedModel}
+              open={showDetails}
+              onOpenChange={setShowDetails}
+            />
+            <DatasetViewDialog
+              model={selectedModel}
+              open={showDataset}
+              onOpenChange={setShowDataset}
+            />
+          </>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Componente para mostrar el dataset del modelo
+interface DatasetViewDialogProps {
+  model: SavedModel;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const DatasetViewDialog = ({ model, open, onOpenChange }: DatasetViewDialogProps) => {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  if (!model.dataset) {
+    return null;
+  }
+
+  const { tableName, columns, rows } = model.dataset;
+
+  // Filtrar filas basándose en la búsqueda
+  const filteredRows = searchQuery.trim()
+    ? rows.filter((row) =>
+        columns.some((column) => {
+          const cellValue = String(row[column] ?? "").toLowerCase();
+          return cellValue.includes(searchQuery.toLowerCase().trim());
+        })
+      )
+    : rows;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">Dataset de Entrenamiento</DialogTitle>
+          <DialogDescription>
+            {tableName} • {rows.length} filas × {columns.length} columnas (datos limpios)
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Barra de búsqueda */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar en la tabla..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {searchQuery && (
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
+                Limpiar
+              </Button>
+            )}
+          </div>
+
+          {searchQuery && (
+            <p className="text-sm text-muted-foreground">
+              Mostrando {filteredRows.length} de {rows.length} filas
+            </p>
+          )}
+
+          {/* Tabla */}
+          <div className="border rounded-lg overflow-auto max-h-[500px]">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-10">
+                <TableRow>
+                  {columns.map((column) => (
+                    <TableHead key={column} className="whitespace-nowrap">
+                      {column}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRows.length > 0 ? (
+                  filteredRows.map((row, idx) => (
+                    <TableRow key={idx}>
+                      {columns.map((column) => {
+                        const cellValue =
+                          typeof row[column] === "object"
+                            ? JSON.stringify(row[column])
+                            : String(row[column] ?? "");
+
+                        return (
+                          <TableCell key={column} className="whitespace-nowrap">
+                            {cellValue}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={columns.length}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      {searchQuery
+                        ? `No se encontraron resultados para "${searchQuery}"`
+                        : "No hay registros para mostrar"}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -86,7 +86,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
       const colLower = col.toLowerCase();
       // Detectar columnas de ID comunes
       if (colLower === "id" || colLower === "_id" || colLower === "index" ||
-          colLower === "row_id" || colLower === "pk" || colLower.endsWith("_id")) {
+        colLower === "row_id" || colLower === "pk" || colLower.endsWith("_id")) {
         // Verificar si es única (característica de un ID)
         const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
         return uniqueValues.size === loadedData.rows.length;
@@ -125,7 +125,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
     // Segunda pasada: contar solo las apariciones después de la primera
     const duplicateCounts = new Map();
     let totalDuplicates = 0;
-    
+
     loadedData.rows.forEach(row => {
       const rowKey = finalColumns
         .map(col => {
@@ -157,7 +157,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
     const idColumns = loadedData.columns.filter(col => {
       const colLower = col.toLowerCase();
       if (colLower === 'id' || colLower === '_id' || colLower === 'index' ||
-          colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+        colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
         const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
         return uniqueValues.size === loadedData.rows.length;
       }
@@ -187,7 +187,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
     });
 
     // Retornar solo las filas que tienen duplicados
-    const duplicateGroups: Array<{indices: number[], row: any}> = [];
+    const duplicateGroups: Array<{ indices: number[], row: any }> = [];
     rowMap.forEach((indices, key) => {
       if (indices.length > 1) {
         duplicateGroups.push({
@@ -281,6 +281,8 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
           data: loadedData.rows,
           columns: loadedData.columns,
           params,
+          table_name: loadedData.tableName,
+          source: loadedData.source, // "csv" or "database"
         }),
       });
 
@@ -295,26 +297,28 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
         setShowCleaned(true);
 
         // Update the loaded data context
-        setLoadedData({
+        const cleanedDataset = {
           ...loadedData,
           rows: result.data,
           columns: result.columns,
-        });
+        };
+
+        setLoadedData(cleanedDataset);
+
+        console.log("✅ Datos limpiados y actualizados en contexto:");
+        console.log(`   - Filas antes: ${loadedData.rows.length}`);
+        console.log(`   - Filas después: ${result.data.length}`);
+        console.log(`   - Filas eliminadas: ${loadedData.rows.length - result.data.length}`);
 
         toast({
           title: "Datos procesados con Pandas",
-          description: result.message,
+          description: `${result.message}. Dataset actualizado: ${result.data.length} filas`,
         });
       } else {
         throw new Error(result.error || 'Error desconocido');
       }
     } catch (error: any) {
       console.error('Error cleaning data:', error);
-      toast({
-        title: "Error al procesar datos",
-        description: error.message || "No se pudieron procesar los datos",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }
@@ -590,7 +594,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                           const idColumns = loadedData.columns.filter(col => {
                             const colLower = col.toLowerCase();
                             if (colLower === 'id' || colLower === '_id' || colLower === 'index' ||
-                                colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+                              colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
                               const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
                               return uniqueValues.size === loadedData.rows.length;
                             }
@@ -719,8 +723,8 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                               return sourceRows.some(otherRow => {
                                 const otherValue = otherRow[col];
                                 if (otherValue === null || otherValue === undefined || otherValue === "") return false;
-                                return String(otherValue).trim().toLowerCase() === normalized && 
-                                       String(otherValue) !== strValue;
+                                return String(otherValue).trim().toLowerCase() === normalized &&
+                                  String(otherValue) !== strValue;
                               });
                             });
                           };
@@ -736,7 +740,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                             );
                           }
                           return rowsToShow.map((row, idx) => (
-  <TableRow key={idx} className="bg-orange-50 dark:bg-orange-900/10">
+                            <TableRow key={idx} className="bg-orange-50 dark:bg-orange-900/10">
                               {displayColumns.map((col) => (
                                 <TableCell key={col}>
                                   {row[col] === null || row[col] === undefined || row[col] === "" ? (

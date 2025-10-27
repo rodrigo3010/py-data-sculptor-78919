@@ -57,6 +57,8 @@ class CleanDataRequest(BaseModel):
     data: List[dict]
     columns: List[str]
     params: dict
+    table_name: Optional[str] = None
+    source: Optional[str] = None  # "csv" or "database"
 
 
 class TrainModelRequest(BaseModel):
@@ -273,7 +275,8 @@ async def clean_data(request: CleanDataRequest):
     try:
         # Convert input data to DataFrame
         df = pd.DataFrame(request.data, columns=request.columns)
-        table_name = None
+        table_name = request.table_name
+        source = request.source
 
         # Ejecutar la operación correspondiente
         if request.operation == "missing":
@@ -287,33 +290,47 @@ async def clean_data(request: CleanDataRequest):
         else:
             raise ValueError(f"Operación no soportada: {request.operation}")
 
-        # Opcionalmente guardar en Supabase (solo para missing values por ahora)
-        if request.operation == "missing":
+        # Si los datos vienen de Supabase, actualizar la tabla
+        if source == "database" and table_name:
             try:
-                table_name = request.params.get("table_name", "cleaned_data")
+                print(f"🔄 Actualizando tabla '{table_name}' en Supabase...")
                 data = df.to_dict("records")
 
-                # First, try to delete existing data if table exists
+                # Eliminar todos los registros existentes
                 try:
-                    response = supabase.table(table_name).delete().execute()
-                except Exception:
-                    pass  # Table might not exist yet
+                    delete_response = supabase.table(table_name).delete().neq('id', 0).execute()
+                    print(f"✅ Registros antiguos eliminados")
+                except Exception as e:
+                    print(f"⚠️ No se pudieron eliminar registros antiguos: {e}")
 
-                # Insert new data
-                response = supabase.table(table_name).insert(data).execute()
+                # Insertar datos limpios
+                if len(data) > 0:
+                    # Supabase tiene un límite de ~1000 registros por request
+                    batch_size = 1000
+                    for i in range(0, len(data), batch_size):
+                        batch = data[i:i + batch_size]
+                        insert_response = supabase.table(table_name).insert(batch).execute()
+                        print(f"✅ Insertados {len(batch)} registros (batch {i//batch_size + 1})")
 
-                if hasattr(response, "error") and response.error:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Error al guardar en Supabase: {response.error}",
-                    )
+                    if hasattr(insert_response, "error") and insert_response.error:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Error al guardar en Supabase: {insert_response.error}",
+                        )
 
-                message += (
-                    f"\nDatos actualizados en la tabla '{table_name}' de Supabase"
-                )
+                    message += f"\n✅ Datos actualizados en Supabase: tabla '{table_name}' ({len(data)} filas)"
+                    print(f"✅ Tabla '{table_name}' actualizada exitosamente con {len(data)} filas")
+                else:
+                    message += f"\n⚠️ No hay datos para actualizar en Supabase"
 
             except Exception as e:
-                message += f"\nAdvertencia: No se pudo actualizar Supabase: {str(e)}"
+                error_msg = f"No se pudo actualizar Supabase: {str(e)}"
+                print(f"❌ {error_msg}")
+                message += f"\n⚠️ {error_msg}"
+        elif source == "csv":
+            print(f"ℹ️ Datos de CSV, no se actualiza Supabase")
+        else:
+            print(f"ℹ️ Sin información de origen, no se actualiza Supabase")
 
         # Convert back to list of dicts for response
         cleaned_data = df.to_dict("records")

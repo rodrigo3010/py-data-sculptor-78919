@@ -16,6 +16,12 @@ interface SavedModel {
   avg_error?: number;
   avg_error_percentage?: number;
   training_results: any;
+  dataset?: {
+    tableName: string;
+    columns: string[];
+    rows: any[];
+    totalRows: number;
+  };
 }
 
 class IndexedDBService {
