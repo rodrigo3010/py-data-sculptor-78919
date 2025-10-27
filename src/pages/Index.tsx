@@ -1,17 +1,19 @@
 import { useState } from "react";
-import { Database, Droplet, Brain, BarChart3, Table, Code } from "lucide-react";
+import { Database, Droplet, Brain, BarChart3, Table, Code, Archive } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ModuleCard } from "@/components/ModuleCard";
 import { DataLoaderDialog } from "@/components/modules/DataLoaderDialog";
 import { DataCleanerDialog } from "@/components/modules/DataCleanerDialog";
 import { ModelTrainerDialog } from "@/components/modules/ModelTrainerDialog";
 import { ResultsDialog } from "@/components/modules/ResultsDialog";
+import { SavedModelsViewer } from "@/components/SavedModelsViewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useData } from "@/contexts/DataContext";
 
 const Index = () => {
   const [activeDialog, setActiveDialog] = useState<string | null>(null);
+  const [showSavedModels, setShowSavedModels] = useState(false);
   const navigate = useNavigate();
   const { loadedData, completedModules, developerMode, toggleDeveloperMode } = useData();
 
@@ -78,7 +80,16 @@ const Index = () => {
                 Sistema completo para procesamiento de datos y machine learning
               </p>
             </div>
-            <div className="flex-1 flex justify-end">
+            <div className="flex-1 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSavedModels(true)}
+                className="gap-2"
+              >
+                <Archive className="h-4 w-4" />
+                Modelos Guardados
+              </Button>
               <Button
                 variant={developerMode ? "default" : "outline"}
                 size="sm"
@@ -161,6 +172,10 @@ const Index = () => {
       <ResultsDialog
         open={activeDialog === "results"}
         onOpenChange={(open) => !open && setActiveDialog(null)}
+      />
+      <SavedModelsViewer
+        open={showSavedModels}
+        onOpenChange={setShowSavedModels}
       />
     </div>
   );

@@ -418,11 +418,18 @@ class SklearnModelTrainer:
                 proba = self.model.predict_proba(X_sample[i : i + 1])[0]
                 pred_data["confidence"] = float(np.max(proba))
                 pred_data["probabilities"] = proba.tolist()
+            
+            # Add error metrics for regression
+            if not self.is_classification:
+                true_val = pred_data["true_value"]
+                pred_val = pred_data["predicted_value"]
+                pred_data["error"] = float(abs(true_val - pred_val))
+                pred_data["error_percentage"] = float(abs(true_val - pred_val) / true_val * 100) if true_val != 0 else 0
 
             results.append(pred_data)
 
         print(f"DEBUG: Generadas {len(results)} predicciones")
-        return {"predictions": results}
+        return {"predictions": results, "task_type": "regression" if not self.is_classification else "classification"}
 
     def save_model(self, model_name: str) -> str:
         """Save trained model"""

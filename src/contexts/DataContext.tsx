@@ -1,13 +1,13 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
-interface LoadedData {
+export interface LoadedData {
   tableName: string;
   columns: string[];
   rows: any[];
   source: "csv" | "database";
 }
 
-interface TrainingResults {
+export interface TrainingResults {
   framework: string;
   metrics: any;
   plots?: any;
@@ -15,6 +15,17 @@ interface TrainingResults {
   training_time?: number;
   model_parameters?: number;
   message?: string;
+  model_name?: string;
+}
+
+export interface Prediction {
+  sample_id: number;
+  true_value: number;
+  predicted_value: number;
+  confidence?: number;
+  probabilities?: number[];
+  error?: number;
+  error_percentage?: number;
 }
 
 interface DataContextType {
@@ -22,12 +33,14 @@ interface DataContextType {
   setLoadedData: (data: LoadedData | null) => void;
   trainingResults: TrainingResults | null;
   setTrainingResults: (results: TrainingResults | null) => void;
+  predictions: Prediction[];
+  setPredictions: (predictions: Prediction[]) => void;
   completedModules: {
     loader: boolean;
     cleaner: boolean;
     trainer: boolean;
     results: boolean;
-  };
+  } | null;
   completeModule: (module: "loader" | "cleaner" | "trainer" | "results") => void;
   developerMode: boolean;
   toggleDeveloperMode: () => void;
@@ -38,6 +51,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [loadedData, setLoadedData] = useState<LoadedData | null>(null);
   const [trainingResults, setTrainingResults] = useState<TrainingResults | null>(null);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [completedModules, setCompletedModules] = useState({
     loader: false,
     cleaner: false,
@@ -60,6 +74,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       setLoadedData, 
       trainingResults, 
       setTrainingResults,
+      predictions,
+      setPredictions,
       completedModules, 
       completeModule, 
       developerMode, 
