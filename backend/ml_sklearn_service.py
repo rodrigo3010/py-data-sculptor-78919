@@ -86,17 +86,26 @@ class SklearnModelTrainer:
         self.feature_names = X.columns.tolist()
         self.target_name = target_column
 
-        # Handle categorical features
-        X_encoded = pd.get_dummies(X, drop_first=True)
-        self.feature_names = X_encoded.columns.tolist()
+        # Select only numeric columns for features
+        numeric_columns = X.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if len(numeric_columns) == 0:
+            raise ValueError("No se encontraron columnas numéricas para usar como características. Por favor, asegúrate de que tu dataset tenga al menos una columna numérica.")
+        
+        X_numeric = X[numeric_columns]
+        self.feature_names = numeric_columns
 
         # Encode target if classification
-        if self.is_classification and y.dtype == "object":
-            y = self.label_encoder.fit_transform(y)
+        if self.is_classification:
+            if y.dtype == "object" or not np.issubdtype(y.dtype, np.number):
+                y = self.label_encoder.fit_transform(y)
+            else:
+                # Convert to int for classification
+                y = y.astype(int)
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
-            X_encoded, y, test_size=test_size, random_state=42
+            X_numeric, y, test_size=test_size, random_state=42, stratify=y if self.is_classification else None
         )
 
         # Scale features

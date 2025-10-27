@@ -1,13 +1,12 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, LineChart, TrendingUp, Download, Save } from "lucide-react";
+import { BarChart3, LineChart, TrendingUp, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BarChart as RechartsBar, Bar, LineChart as RechartsLine, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useData } from "@/contexts/DataContext";
 import { useState, useEffect } from "react";
-import axios from "axios";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/indexeddb";
 
@@ -23,44 +22,22 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
 
   // Cargar predicciones cuando se abre el diálogo
   useEffect(() => {
-    if (open && trainingResults && contextPredictions.length === 0) {
-      fetchPredictions();
+    if (open && trainingResults) {
+      console.log("ResultsDialog abierto, predicciones en contexto:", contextPredictions.length);
+      if (contextPredictions.length === 0) {
+        console.log("No hay predicciones, obteniendo del backend...");
+        fetchPredictions();
+      }
     }
   }, [open, trainingResults]);
 
   const fetchPredictions = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get("/predictions?n_samples=50");
-      const preds = response.data.predictions || [];
-      setPredictions(preds);
-    } catch (error: any) {
-      console.error("Error fetching predictions:", error);
+    // Ya no necesitamos obtener predicciones del backend
+    // Las predicciones ya están en el contexto desde el entrenamiento
+    if (contextPredictions.length === 0) {
       toast({
-        title: "Error",
-        description: "No se pudieron cargar las predicciones",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveModel = async () => {
-    if (!trainingResults) return;
-
-    try {
-      const modelName = `model_${Date.now()}`;
-      const response = await axios.post(`/save-model?framework=${trainingResults.framework}&model_name=${modelName}`);
-
-      toast({
-        title: "Modelo guardado",
-        description: response.data.message,
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.response?.data?.detail || "Error al guardar el modelo",
+        title: "Sin predicciones",
+        description: "No se encontraron predicciones. Entrena un modelo primero.",
         variant: "destructive",
       });
     }
@@ -69,13 +46,39 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
   const handleSaveToIndexedDB = async () => {
     if (!trainingResults) return;
 
+    console.log("=== GUARDANDO MODELO ===");
+    console.log("Predicciones en contexto:", contextPredictions.length);
+
     setLoading(true);
 
     try {
       await db.init();
 
-      const errors = contextPredictions.map(p => p.error || 0);
-      const errorPercentages = contextPredictions.map(p => p.error_percentage || 0);
+      let predictions = contextPredictions;
+
+      if (predictions.length === 0) {
+        console.log("No hay predicciones en contexto");
+        // Ya no obtenemos del backend, las predicciones vienen del entrenamiento frontend
+        try {
+          predictions = [];
+          console.log("Predicciones obtenidas del backend:", predictions.length);
+        } catch (error) {
+          console.error("Error obteniendo predicciones:", error);
+        }
+      }
+
+      if (predictions.length === 0) {
+        toast({
+          title: "⚠️ Sin predicciones",
+          description: "No hay predicciones para guardar. Entrena un modelo primero.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      const errors = predictions.map(p => p.error || 0);
+      const errorPercentages = predictions.map(p => p.error_percentage || 0);
 
       const savedModel = {
         model_name: `Modelo ${new Date().toLocaleString()}`,
@@ -86,18 +89,20 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
         model_parameters: trainingResults.model_parameters,
         training_time: trainingResults.training_time,
         metrics: trainingResults.metrics,
-        predictions: contextPredictions,
-        total_predictions: contextPredictions.length,
+        predictions: predictions,
+        total_predictions: predictions.length,
         avg_error: errors.length > 0 ? errors.reduce((a, b) => a + b, 0) / errors.length : 0,
         avg_error_percentage: errorPercentages.length > 0 ? errorPercentages.reduce((a, b) => a + b, 0) / errorPercentages.length : 0,
         training_results: trainingResults
       };
 
+      console.log("Modelo a guardar:", savedModel);
+
       await db.saveModel(savedModel);
 
       toast({
         title: "✅ Guardado Exitosamente",
-        description: `Modelo con ${contextPredictions.length} predicciones guardado`,
+        description: `Modelo con ${predictions.length} predicciones guardado`,
       });
     } catch (error: any) {
       console.error("Error guardando en IndexedDB:", error);
@@ -164,30 +169,22 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
     },
   ].filter(m => m.visible);
 
-  // Datos para gráfico de predicciones (Real vs Predicho)
-  // Si no hay predicciones, generar datos de demostración
+  // Datos para gráfico de predicciones (Real vs Predicho) - SOLO DATOS REALES
   const predictionChartData = predictions.length > 0
     ? predictions.slice(0, 10).map((pred) => ({
       muestra: `#${pred.sample_id}`,
       real: Number(pred.true_value),
       predicho: Number(pred.predicted_value)
     }))
-    : Array.from({ length: 10 }, (_, i) => ({
-      muestra: `#${i + 1}`,
-      real: Math.random() * 100,
-      predicho: Math.random() * 100
-    }));
+    : [];
 
-  // Datos para gráfico de errores (solo regresión)
+  // Datos para gráfico de errores (solo regresión) - SOLO DATOS REALES
   const errorChartData = predictions.length > 0
     ? predictions.slice(0, 10).map((pred) => ({
       muestra: `#${pred.sample_id}`,
-      error: pred.error_percentage || Math.random() * 20
+      error: pred.error_percentage || 0
     }))
-    : Array.from({ length: 10 }, (_, i) => ({
-      muestra: `#${i + 1}`,
-      error: Math.random() * 20
-    }));
+    : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -217,114 +214,122 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
 
           {/* PESTAÑA MÉTRICAS - CON TODOS LOS GRÁFICOS */}
           <TabsContent value="metrics" className="space-y-4">
+            {/* Métricas principales */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {metricsDisplay.map((metric, idx) => (
+                <Card key={idx}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">{metric.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{metric.value}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
             {/* Gráfico de errores */}
-            <Card>
-              <CardHeader>
-                <CardTitle>📈 Distribución de Errores</CardTitle>
-                <CardDescription>
-                  {predictions.length > 0 && predictions[0]?.error !== undefined
-                    ? "Porcentaje de error por predicción"
-                    : "Errores"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={350}>
-                  <RechartsBar data={errorChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="muestra" />
-                    <YAxis label={{ value: 'Error (%)', angle: -90, position: 'insideLeft' }} />
-                    <Tooltip />
-                    <Bar dataKey="error" fill="#f59e0b" name="Error %" />
-                  </RechartsBar>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            {errorChartData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>📈 Distribución de Errores</CardTitle>
+                  <CardDescription>
+                    Porcentaje de error por predicción
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={350}>
+                    <RechartsBar data={errorChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="muestra" />
+                      <YAxis label={{ value: 'Error (%)', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip />
+                      <Bar dataKey="error" fill="#f59e0b" name="Error %" />
+                    </RechartsBar>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Estadísticas de error con colores */}
-            <Card>
-              <CardHeader>
-                <CardTitle>📊 Estadísticas de Error</CardTitle>
-                <CardDescription>
-                  {predictions.length > 0 && predictions[0]?.error !== undefined
-                    ? "Métricas de rendimiento del modelo"
-                    : "Estadísticas"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border-2 border-blue-200 dark:border-blue-800">
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {predictions.length > 0 && predictions[0]?.error !== undefined
-                        ? (predictions.reduce((sum, p) => sum + (p.error || 0), 0) / predictions.length).toFixed(2)
-                        : (Math.random() * 10).toFixed(2)}
+            {predictions.length > 0 && predictions[0]?.error !== undefined && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>📊 Estadísticas de Error</CardTitle>
+                  <CardDescription>
+                    Métricas de rendimiento del modelo
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border-2 border-blue-200 dark:border-blue-800">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                        {(predictions.reduce((sum, p) => sum + (p.error || 0), 0) / predictions.length).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Error Promedio</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Error Promedio</div>
-                  </div>
-                  <div className="text-center p-4 bg-green-50 dark:bg-green-950 rounded-lg border-2 border-green-200 dark:border-green-800">
-                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {predictions.length > 0 && predictions[0]?.error_percentage !== undefined
-                        ? (predictions.reduce((sum, p) => sum + (p.error_percentage || 0), 0) / predictions.length).toFixed(1)
-                        : (Math.random() * 15).toFixed(1)}%
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-950 rounded-lg border-2 border-green-200 dark:border-green-800">
+                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                        {(predictions.reduce((sum, p) => sum + (p.error_percentage || 0), 0) / predictions.length).toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Error % Promedio</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Error % Promedio</div>
-                  </div>
-                  <div className="text-center p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border-2 border-purple-200 dark:border-purple-800">
-                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                      {predictions.length > 0 && predictions[0]?.error !== undefined
-                        ? Math.min(...predictions.map(p => p.error || 0)).toFixed(2)
-                        : (Math.random() * 5).toFixed(2)}
+                    <div className="text-center p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border-2 border-purple-200 dark:border-purple-800">
+                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                        {Math.min(...predictions.map(p => p.error || 0)).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Error Mínimo</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Error Mínimo</div>
-                  </div>
-                  <div className="text-center p-4 bg-orange-50 dark:bg-orange-950 rounded-lg border-2 border-orange-200 dark:border-orange-800">
-                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                      {predictions.length > 0 && predictions[0]?.error !== undefined
-                        ? Math.max(...predictions.map(p => p.error || 0)).toFixed(2)
-                        : (Math.random() * 20).toFixed(2)}
+                    <div className="text-center p-4 bg-orange-50 dark:bg-orange-950 rounded-lg border-2 border-orange-200 dark:border-orange-800">
+                      <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                        {Math.max(...predictions.map(p => p.error || 0)).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Error Máximo</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Error Máximo</div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Resumen de rendimiento */}
-            <Card>
-              <CardHeader>
-                <CardTitle>📋 Resumen de Rendimiento</CardTitle>
-                <CardDescription>Estadísticas generales del modelo</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <div className="text-2xl font-bold">
-                      {predictions.length || 'N/A'}
+            {predictions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>📋 Resumen de Rendimiento</CardTitle>
+                  <CardDescription>Estadísticas generales del modelo</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-muted/30 rounded-lg">
+                      <div className="text-2xl font-bold">
+                        {predictions.length}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Predicciones</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Predicciones</div>
-                  </div>
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <div className="text-2xl font-bold">
-                      {predictions.length > 0 && predictions[0]?.error_percentage !== undefined
-                        ? `${(predictions.reduce((sum, p) => sum + (100 - (p.error_percentage || 0)), 0) / predictions.length).toFixed(1)}%`
-                        : metricsDisplay[0]?.value || 'N/A'}
+                    <div className="text-center p-4 bg-muted/30 rounded-lg">
+                      <div className="text-2xl font-bold">
+                        {predictions[0]?.error_percentage !== undefined
+                          ? `${(predictions.reduce((sum, p) => sum + (100 - (p.error_percentage || 0)), 0) / predictions.length).toFixed(1)}%`
+                          : metricsDisplay[0]?.value || 'N/A'}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Precisión Media</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Precisión Media</div>
-                  </div>
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <div className="text-2xl font-bold">
-                      {trainingResults.framework === 'sklearn' ? 'Scikit-learn' : 'PyTorch'}
+                    <div className="text-center p-4 bg-muted/30 rounded-lg">
+                      <div className="text-2xl font-bold">
+                        {trainingResults.framework === 'sklearn' ? 'Scikit-learn' : 'PyTorch'}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Framework</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Framework</div>
-                  </div>
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <div className="text-2xl font-bold">
-                      {isClassification ? 'Clasificación' : 'Regresión'}
+                    <div className="text-center p-4 bg-muted/30 rounded-lg">
+                      <div className="text-2xl font-bold">
+                        {isClassification ? 'Clasificación' : 'Regresión'}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">Tipo de Tarea</div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">Tipo de Tarea</div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* PESTAÑA PREDICCIONES */}
@@ -386,68 +391,70 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
                   </Card>
                 )}
 
-                {/* Gráfico: Real vs Predicho - SIEMPRE SE MUESTRA */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>📊 Comparación: Valores Reales vs Predichos</CardTitle>
-                    <CardDescription>
-                      {predictions.length > 0
-                        ? `Visualización de las primeras ${Math.min(10, predictions.length)} predicciones`
-                        : "Datos (entrena un modelo para ver predicciones reales)"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <RechartsLine data={predictionChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="muestra" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="real"
-                          stroke="#3b82f6"
-                          strokeWidth={3}
-                          name="Valor Real"
-                          dot={{ fill: '#3b82f6', r: 5 }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="predicho"
-                          stroke="#10b981"
-                          strokeWidth={3}
-                          name="Valor Predicho"
-                          dot={{ fill: '#10b981', r: 5 }}
-                        />
-                      </RechartsLine>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+                {/* Gráfico: Real vs Predicho */}
+                {predictionChartData.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>📊 Comparación: Valores Reales vs Predichos</CardTitle>
+                      <CardDescription>
+                        Visualización de las primeras {Math.min(10, predictions.length)} predicciones
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RechartsLine data={predictionChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="muestra" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="real"
+                            stroke="#3b82f6"
+                            strokeWidth={3}
+                            name="Valor Real"
+                            dot={{ fill: '#3b82f6', r: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="predicho"
+                            stroke="#10b981"
+                            strokeWidth={3}
+                            name="Valor Predicho"
+                            dot={{ fill: '#10b981', r: 5 }}
+                          />
+                        </RechartsLine>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                )}
 
 
                 {/* Gráfico adicional de barras comparativas */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>📊 Comparación por Barras</CardTitle>
-                    <CardDescription>
-                      Visualización alternativa de valores reales vs predichos
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <RechartsBar data={predictionChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="muestra" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="real" fill="#3b82f6" name="Valor Real" />
-                        <Bar dataKey="predicho" fill="#10b981" name="Valor Predicho" />
-                      </RechartsBar>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+                {predictionChartData.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>📊 Comparación por Barras</CardTitle>
+                      <CardDescription>
+                        Visualización alternativa de valores reales vs predichos
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RechartsBar data={predictionChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="muestra" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="real" fill="#3b82f6" name="Valor Real" />
+                          <Bar dataKey="predicho" fill="#10b981" name="Valor Predicho" />
+                        </RechartsBar>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
           </TabsContent>
@@ -508,17 +515,13 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
 
         {/* Botones de acción */}
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={handleSaveModel}>
-            <Download className="h-4 w-4 mr-2" />
-            Guardar Modelo
-          </Button>
           <Button
             onClick={handleSaveToIndexedDB}
-            disabled={loading}
+            disabled={loading || predictions.length === 0}
             className="bg-gradient-primary"
           >
             <Save className="h-4 w-4 mr-2" />
-            {loading ? "Guardando..." : "Guardar Predicciones"}
+            {loading ? "Guardando..." : "Guardar en IndexedDB"}
           </Button>
         </div>
       </DialogContent>

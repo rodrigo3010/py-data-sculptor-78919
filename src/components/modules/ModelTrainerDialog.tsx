@@ -23,10 +23,11 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 
 // Icons
-import { Brain, Network, Layers, PlayCircle, CheckCircle2, AlertCircle } from "lucide-react";
+import { Brain, Network, Layers, PlayCircle, CheckCircle2, AlertCircle, Save } from "lucide-react";
 
 // Custom Hooks
 import { useData } from "@/contexts/DataContext";
+import { db } from "@/lib/indexeddb";
 
 // Types
 interface ModelTrainerDialogProps {
@@ -62,53 +63,55 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
   const navigate = useNavigate();
   const { toast } = useToast();
   const { loadedData, setTrainingResults, setPredictions, completeModule } = useData();
-  
+
   // Training state
   const [epochs, setEpochs] = useState<number[]>([50]);
   const [testSize, setTestSize] = useState<number[]>([20]);
   const [isTraining, setIsTraining] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [trainingComplete, setTrainingComplete] = useState<boolean>(false);
+  const [trainingResults, setTrainingResultsLocal] = useState<any>(null);
+  const [predictionsData, setPredictionsData] = useState<any[]>([]);
   // Column selection
   const [featureColumn, setFeatureColumn] = useState<string>("");
   const [targetColumn, setTargetColumn] = useState<string>("");
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const [availableFeatures, setAvailableFeatures] = useState<string[]>([]);
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
-  
+
   // Training state
   const [cvFolds, setCvFolds] = useState<number>(5);
   const [optimization, setOptimization] = useState<boolean>(false);
   const [metric, setMetric] = useState<string>("mse");
   const [taskType, setTaskType] = useState<string>("regression");
-  
+
   // Model selection
   const [sklearnModel, setSklearnModel] = useState<string>("linear");
-  
+
   // PyTorch state
   const [architecture, setArchitecture] = useState<string>("mlp");
   const [hiddenLayers, setHiddenLayers] = useState<number>(1);
   const [neuronsPerLayer, setNeuronsPerLayer] = useState<number>(32);
   const [activation, setActivation] = useState<string>("relu");
   const [learningRate, setLearningRate] = useState<number>(0.01);
-  
+
   // Prediction state
   const [localPredictions, setLocalPredictions] = useState<any[]>([]);
   const [isPredicting, setIsPredicting] = useState<boolean>(false);
   const [showPredictions, setShowPredictions] = useState<boolean>(false);
   const [model, setModel] = useState<MLModel | null>(null);
-  
+
   // Update available columns when data changes
   useEffect(() => {
     if (loadedData?.columns) {
       setAvailableColumns(loadedData.columns);
     }
   }, [loadedData]);
-  
+
   // Update available features when data or target column changes
   React.useEffect(() => {
     if (!loadedData?.columns) return;
-    
+
     const numericColumns = loadedData.columns.filter(col => {
       if (col === targetColumn) return false;
       return loadedData.rows.some(row => {
@@ -116,18 +119,18 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
         return value !== null && value !== undefined && !isNaN(Number(value));
       });
     });
-    
+
     setAvailableFeatures(numericColumns);
-    
+
     // Remove any selected features that are no longer available
-    setSelectedFeatures(prev => 
+    setSelectedFeatures(prev =>
       prev.filter(feature => numericColumns.includes(feature))
     );
   }, [loadedData, targetColumn]);
 
   // Handle feature selection change
   const handleFeatureToggle = (feature: string) => {
-    setSelectedFeatures(prev => 
+    setSelectedFeatures(prev =>
       prev.includes(feature)
         ? prev.filter(f => f !== feature)  // Remove if already selected
         : [...prev, feature]  // Add if not selected
@@ -143,77 +146,74 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
       });
       return;
     }
-    
-    if (!featureColumn || !targetColumn) {
+
+    if (!targetColumn) {
       toast({
         title: "Error",
-        description: "Por favor, selecciona tanto la columna de características (X) como la columna objetivo (Y).",
+        description: "Por favor, selecciona la columna objetivo (Y).",
         variant: "destructive",
       });
       return;
     }
 
-    if (featureColumn === targetColumn) {
-      toast({
-        title: "Error",
-        description: "La columna de características (X) y la columna objetivo (Y) no pueden ser la misma.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     setIsTraining(true);
     setProgress(0);
     setTrainingComplete(false);
     setLocalPredictions([]);
     setShowPredictions(false);
-    
+
     const modelName = framework === "sklearn" ? sklearnModel : architecture;
-    
+
     toast({
       title: "Iniciando entrenamiento",
-      description: `Entrenando modelo ${modelName} con ${featureColumn} -> ${targetColumn}`,
+      description: `Entrenando modelo ${modelName} en el navegador`,
     });
 
     try {
-      // Import tfjs dynamically to avoid SSR issues
-      const tf = await import('@tensorflow/tfjs');
-      const { trainModel } = await import('@/lib/ml-utils');
-      
-      // Show progress
+      // Importar el servicio de ML
+      const { trainModel } = await import('@/lib/ml-service');
+
       const progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 5, 90));
-      }, 500);
+      }, 300);
 
-      // Train the model
-      const { model: trainedModel, results } = await trainModel(
-        loadedData.rows,
-        [featureColumn],  // Use featureColumn as an array
-        targetColumn,
-        framework,
-        taskType
-      );
+      // Entrenar modelo en el frontend
+      const result = await trainModel(loadedData.rows, targetColumn, {
+        taskType: taskType as 'regression' | 'classification',
+        modelType: framework === "sklearn" ? sklearnModel : architecture,
+        epochs: epochs[0],
+        learningRate: learningRate,
+        testSize: testSize[0] / 100
+      });
 
       clearInterval(progressInterval);
       setProgress(100);
-      setModel(trainedModel);
+
       setTrainingComplete(true);
-      
-      // Store results in context
-      setTrainingResults({
-        ...results,
-        framework: framework,
+
+      const results = {
+        framework: 'tensorflow.js',
+        metrics: result.metrics,
         model_name: modelName,
-      });
-      
+        training_time: result.training_time,
+        message: result.message
+      };
+
+      setTrainingResults(results);
+      setTrainingResultsLocal(results);
+
+      // Guardar predicciones
+      if (result.predictions && result.predictions.length > 0) {
+        setPredictions(result.predictions);
+        setPredictionsData(result.predictions);
+        console.log("✅ Predicciones generadas:", result.predictions.length);
+      }
+
       toast({
         title: "✅ Entrenamiento completo",
-        description: `Modelo entrenado con ${loadedData.rows.length} ejemplos`,
+        description: `Modelo entrenado con ${loadedData.rows.length} ejemplos en ${result.training_time.toFixed(2)}s`,
       });
 
-      // Generar predicciones automáticamente
-      await fetchPredictions();
-      
     } catch (error: any) {
       console.error("Error en el entrenamiento:", error);
       toast({
@@ -250,13 +250,13 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
     try {
       const { makePredictions } = await import('@/lib/ml-utils');
-      
+
       // Get a sample of the data for prediction (first 20 rows)
       const sampleSize = Math.min(20, loadedData.rows.length);
       const sampleData = loadedData.rows.slice(0, sampleSize);
-      
+
       console.debug("Generando predicciones para", sampleSize, "muestras con características:", selectedFeatures);
-      
+
       // Make predictions using selected features
       const newPredictions = await makePredictions(
         model,
@@ -273,7 +273,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
         title: "✅ Predicciones generadas",
         description: `Se generaron ${newPredictions.length} predicciones`,
       });
-      
+
     } catch (error: any) {
       console.error("Error al generar predicciones:", error);
       toast({
@@ -293,58 +293,97 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
     navigate('/results');
   };
 
-  const fetchPredictions = async () => {
+  // Ya no necesitamos fetchPredictions porque las predicciones se generan en el frontend
+
+  const handleSaveModel = async () => {
     try {
-      const response = await fetch("/predictions?n_samples=50");
-      const data = await response.json();
-      
-      if (data.predictions && data.predictions.length > 0) {
-        setPredictions(data.predictions);
-        console.log("Predicciones guardadas en contexto:", data.predictions.length);
+      await db.init();
+
+      // Usar las predicciones del estado local
+      const predictions = predictionsData;
+
+      if (predictions.length === 0) {
+        toast({
+          title: "⚠️ Sin predicciones",
+          description: "No hay predicciones para guardar",
+          variant: "destructive",
+        });
+        return;
       }
-    } catch (error) {
-      console.error("Error al obtener predicciones:", error);
+
+      const errors = predictions.map((p: any) => p.error || 0);
+      const errorPercentages = predictions.map((p: any) => p.error_percentage || 0);
+
+      const savedModel = {
+        model_name: `Modelo ${new Date().toLocaleString()}`,
+        framework: trainingResults?.framework || "tensorflow.js",
+        model_type: sklearnModel || architecture,
+        task_type: taskType,
+        training_date: new Date(),
+        model_parameters: trainingResults?.model_parameters,
+        training_time: trainingResults?.training_time,
+        metrics: trainingResults?.metrics || {},
+        predictions: predictions,
+        total_predictions: predictions.length,
+        avg_error: errors.length > 0 ? errors.reduce((a: number, b: number) => a + b, 0) / errors.length : 0,
+        avg_error_percentage: errorPercentages.length > 0 ? errorPercentages.reduce((a: number, b: number) => a + b, 0) / errorPercentages.length : 0,
+        training_results: trainingResults
+      };
+
+      await db.saveModel(savedModel);
+
+      toast({
+        title: "✅ Modelo Guardado",
+        description: `Modelo con ${predictions.length} predicciones guardado exitosamente`,
+      });
+    } catch (error: any) {
+      console.error("Error guardando modelo:", error);
+      toast({
+        title: "Error al guardar",
+        description: error.message || "Error desconocido",
+        variant: "destructive",
+      });
     }
   };
 
   const generatePredictions = () => {
-  if (!loadedData?.rows || !featureColumn || !targetColumn) {
-    toast({
-      title: "Error",
-      description: "Selecciona las columnas de características y objetivo primero",
-      variant: "destructive",
-    });
-    return;
-  }
+    if (!loadedData?.rows || !featureColumn || !targetColumn) {
+      toast({
+        title: "Error",
+        description: "Selecciona las columnas de características y objetivo primero",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  setIsPredicting(true);
-  setShowPredictions(true);
-  
-  // Simulamos un tiempo de procesamiento
-  setTimeout(() => {
-    const mockPredictions = loadedData.rows.slice(0, 10).map((row, idx) => {
-      const trueValue = parseFloat(String(row[targetColumn])) || 0;
-      const predictedValue = trueValue * (0.9 + Math.random() * 0.2); // Valor cercano al real
-      const confidence = 0.7 + Math.random() * 0.29; // 70-99% de confianza
-      
-      return {
-        id: idx + 1,
-        input: row[featureColumn],
-        true_value: trueValue,
-        predicted_value: parseFloat(predictedValue.toFixed(2)),
-        confidence: parseFloat(confidence.toFixed(2))
-      };
-    });
+    setIsPredicting(true);
+    setShowPredictions(true);
 
-    setLocalPredictions(mockPredictions);
-    setIsPredicting(false);
-    
-    toast({
-      title: "Predicciones generadas",
-      description: `Se generaron ${mockPredictions.length} predicciones de ejemplo.`,
-    });
-  }, 1500);
-};
+    // Simulamos un tiempo de procesamiento
+    setTimeout(() => {
+      const mockPredictions = loadedData.rows.slice(0, 10).map((row, idx) => {
+        const trueValue = parseFloat(String(row[targetColumn])) || 0;
+        const predictedValue = trueValue * (0.9 + Math.random() * 0.2); // Valor cercano al real
+        const confidence = 0.7 + Math.random() * 0.29; // 70-99% de confianza
+
+        return {
+          id: idx + 1,
+          input: row[featureColumn],
+          true_value: trueValue,
+          predicted_value: parseFloat(predictedValue.toFixed(2)),
+          confidence: parseFloat(confidence.toFixed(2))
+        };
+      });
+
+      setLocalPredictions(mockPredictions);
+      setIsPredicting(false);
+
+      toast({
+        title: "Predicciones generadas",
+        description: `Se generaron ${mockPredictions.length} predicciones de ejemplo.`,
+      });
+    }, 1500);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -370,13 +409,13 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               PyTorch
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="sklearn" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Características (X)</Label>
-                <Select 
-                  value={featureColumn} 
+                <Select
+                  value={featureColumn}
                   onValueChange={setFeatureColumn}
                 >
                   <SelectTrigger>
@@ -396,8 +435,8 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
               <div className="space-y-2">
                 <Label>Objetivo (Y)</Label>
-                <Select 
-                  value={targetColumn} 
+                <Select
+                  value={targetColumn}
                   onValueChange={setTargetColumn}
                 >
                   <SelectTrigger>
@@ -457,7 +496,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
                 />
               </div>
 
-              <Button 
+              <Button
                 className="w-full bg-gradient-primary"
                 onClick={() => handleTrain("sklearn")}
                 disabled={isTraining}
@@ -479,13 +518,13 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               )}
             </div>
           </TabsContent>
-          
+
           <TabsContent value="pytorch" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Características (X)</Label>
-                <Select 
-                  value={featureColumn} 
+                <Select
+                  value={featureColumn}
                   onValueChange={setFeatureColumn}
                 >
                   <SelectTrigger>
@@ -505,8 +544,8 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
 
               <div className="space-y-2">
                 <Label>Objetivo (Y)</Label>
-                <Select 
-                  value={targetColumn} 
+                <Select
+                  value={targetColumn}
                   onValueChange={setTargetColumn}
                 >
                   <SelectTrigger>
@@ -540,9 +579,9 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="hidden-layers">Capas ocultas</Label>
-                  <Input 
-                    id="hidden-layers" 
-                    type="number" 
+                  <Input
+                    id="hidden-layers"
+                    type="number"
                     value={hiddenLayers}
                     onChange={(e) => setHiddenLayers(parseInt(e.target.value))}
                     min="1"
@@ -551,9 +590,9 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="neurons">Neuronas por capa</Label>
-                  <Input 
-                    id="neurons" 
-                    type="number" 
+                  <Input
+                    id="neurons"
+                    type="number"
                     value={neuronsPerLayer}
                     onChange={(e) => setNeuronsPerLayer(parseInt(e.target.value))}
                     min="16"
@@ -587,7 +626,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
                 />
               </div>
 
-              <Button 
+              <Button
                 className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
                 onClick={() => handleTrain("pytorch")}
                 disabled={isTraining}
@@ -659,177 +698,188 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
           </Card>
         )}
 
-        {/* Sección de Predicciones */}
-{/* Sección de Resultados */}
-{trainingComplete && (
-  <Card className="mt-6">
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <BarChart2 className="h-5 w-5" />
-        Resultados de Predicción
-      </CardTitle>
-      <CardDescription>
-        Visualización de las predicciones generadas por el modelo
-      </CardDescription>
-    </CardHeader>
-    <CardContent className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Métricas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Error Promedio:</span>
-                <span className="font-medium">
-                  {localPredictions.length > 0 
-                    ? (localPredictions.reduce((sum, p) => 
-                        sum + Math.abs(Number(p.true_value) - Number(p.predicted_value)), 0) / localPredictions.length).toFixed(2)
-                    : 'N/A'}
-                </span>
+        {/* Sección de Resultados del Entrenamiento */}
+        {trainingComplete && trainingResults && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart2 className="h-5 w-5" />
+                Resultados del Entrenamiento
+              </CardTitle>
+              <CardDescription>
+                Métricas y predicciones del modelo entrenado
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {trainingResults.metrics?.test_r2 !== undefined && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">R² Score</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{trainingResults.metrics.test_r2.toFixed(3)}</div>
+                    </CardContent>
+                  </Card>
+                )}
+                {trainingResults.metrics?.test_rmse !== undefined && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">RMSE</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{trainingResults.metrics.test_rmse.toFixed(2)}</div>
+                    </CardContent>
+                  </Card>
+                )}
+                {trainingResults.metrics?.test_accuracy !== undefined && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Accuracy</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{(trainingResults.metrics.test_accuracy * 100).toFixed(1)}%</div>
+                    </CardContent>
+                  </Card>
+                )}
+                {trainingResults.metrics?.f1_score !== undefined && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">F1-Score</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{(trainingResults.metrics.f1_score * 100).toFixed(1)}%</div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Precisión:</span>
-                <span className="font-medium">
-                  {localPredictions.length > 0 
-                    ? `${(localPredictions.reduce((sum, p) => 
-                        sum + (Math.abs(Number(p.true_value) - Number(p.predicted_value)) / Number(p.true_value) < 0.1 ? 1 : 0), 0) / 
-                        localPredictions.length * 100).toFixed(1)}%`
-                    : 'N/A'}
-                </span>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Información del Modelo</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Framework:</span>
+                      <span className="ml-2 font-medium">{trainingResults.framework}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Columna Objetivo:</span>
+                      <span className="ml-2 font-medium">{targetColumn}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Tipo de Tarea:</span>
+                      <span className="ml-2 font-medium">{taskType === 'regression' ? 'Regresión' : 'Clasificación'}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Datos de Entrenamiento:</span>
+                      <span className="ml-2 font-medium">{loadedData?.rows?.length || 0} filas</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {predictionsData.length > 0 && (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Predicciones del Modelo</CardTitle>
+                      <CardDescription>Primeras 10 predicciones generadas</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                        {predictionsData.slice(0, 10).map((pred) => {
+                          const isRegression = pred.error !== undefined;
+                          const isCorrect = isRegression
+                            ? pred.error_percentage < 10
+                            : pred.true_value === pred.predicted_value;
+
+                          return (
+                            <div
+                              key={pred.sample_id}
+                              className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm"
+                            >
+                              <span className="font-medium">#{pred.sample_id}</span>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={isCorrect ? "default" : "destructive"} className="text-xs">
+                                  Real: {isRegression ? Number(pred.true_value).toFixed(2) : pred.true_value} |
+                                  Pred: {isRegression ? Number(pred.predicted_value).toFixed(2) : pred.predicted_value}
+                                </Badge>
+                                {pred.error !== undefined && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Error: {pred.error_percentage.toFixed(1)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Visualización: Real vs Predicho</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-[150px] flex items-end gap-1">
+                        {predictionsData.slice(0, 10).map((pred, i) => {
+                          const maxVal = Math.max(...predictionsData.slice(0, 10).map(p => Math.max(Number(p.true_value), Number(p.predicted_value))));
+                          return (
+                            <div
+                              key={i}
+                              className="flex-1 flex flex-col items-center gap-1"
+                              title={`#${pred.sample_id}\nReal: ${Number(pred.true_value).toFixed(2)}\nPredicho: ${Number(pred.predicted_value).toFixed(2)}`}
+                            >
+                              <div
+                                className="w-full bg-blue-500 rounded-t"
+                                style={{
+                                  height: `${(Number(pred.true_value) / maxVal) * 120}px`,
+                                  minHeight: '4px'
+                                }}
+                              />
+                              <div
+                                className="w-full bg-green-500 rounded-t"
+                                style={{
+                                  height: `${(Number(pred.predicted_value) / maxVal) * 120}px`,
+                                  minHeight: '4px'
+                                }}
+                              />
+                              <span className="text-xs text-muted-foreground">{i + 1}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="text-xs text-center text-muted-foreground mt-2">
+                        <span className="inline-block w-3 h-3 bg-blue-500 rounded mr-1"></span>
+                        Real
+                        <span className="inline-block w-3 h-3 bg-green-500 rounded ml-3 mr-1"></span>
+                        Predicho
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+
+              <div className="text-center text-sm text-muted-foreground">
+                ✅ Modelo entrenado exitosamente con {predictionsData.length} predicciones. Haz clic en "Guardar Modelo" o "Siguiente" para más detalles.
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Distribución</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[100px] flex items-end gap-1">
-              {localPredictions.slice(0, 10).map((p, i) => (
-                <div 
-                  key={i} 
-                  className="flex-1 flex flex-col items-center"
-                  title={`Real: ${p.true_value}\nPredicho: ${p.predicted_value}`}
-                >
-                  <div 
-                    className="w-full bg-blue-500 rounded-t-sm"
-                    style={{ 
-                      height: `${(Number(p.true_value) / Math.max(...localPredictions.map(p => Number(p.true_value)), 1)) * 80}%`,
-                      opacity: 0.7
-                    }}
-                  />
-                  <div 
-                    className="w-full bg-green-500 rounded-t-sm"
-                    style={{ 
-                      height: `${(Number(p.predicted_value) / Math.max(...localPredictions.map(p => Number(p.true_value)), 1)) * 80}%`
-                    }}
-                  />
-                  <span className="text-xs mt-1">{i+1}</span>
-                </div>
-              ))}
-            </div>
-            <div className="text-xs text-center text-muted-foreground mt-2">
-              Comparación de valores reales (azul) vs predichos (verde)
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="font-medium">Predicciones</h3>
-          <Button 
-            onClick={generatePredictions}
-            disabled={isPredicting}
-            variant="outline"
-            size="sm"
-          >
-            {isPredicting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            {isPredicting ? 'Generando...' : 'Generar Predicciones'}
-          </Button>
-        </div>
-
-        {showPredictions ? (
-          localPredictions.length > 0 ? (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader className="bg-muted/50">
-                  <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Entrada ({featureColumn})</TableHead>
-                    <TableHead>Valor Real</TableHead>
-                    <TableHead>Predicción</TableHead>
-                    <TableHead>Diferencia</TableHead>
-                    <TableHead>Confianza</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {localPredictions.map((pred) => (
-                    <TableRow key={pred.id}>
-                      <TableCell className="font-medium">{pred.id}</TableCell>
-                      <TableCell className="max-w-[150px] truncate">
-                        {String(pred.input).substring(0, 20)}{String(pred.input).length > 20 ? '...' : ''}
-                      </TableCell>
-                      <TableCell>{Number(pred.true_value).toFixed(2)}</TableCell>
-                      <TableCell>
-                        <span className={`font-medium ${
-                          Math.abs(Number(pred.true_value) - Number(pred.predicted_value)) / Number(pred.true_value) < 0.1 
-                            ? 'text-green-600' 
-                            : 'text-red-600'
-                        }`}>
-                          {Number(pred.predicted_value).toFixed(2)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {(Number(pred.true_value) - Number(pred.predicted_value)).toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="h-2 rounded-full bg-blue-600" 
-                            style={{ width: `${(Number(pred.confidence) || 0) * 100}%` }}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground text-center mt-1">
-                          {((Number(pred.confidence) || 0) * 100).toFixed(0)}%
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="border-2 border-dashed rounded-lg p-8 text-center">
-              <BarChart2 className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">
-                No se pudieron generar predicciones. Intenta nuevamente.
-              </p>
-            </div>
-          )
-        ) : (
-          <div className="border-2 border-dashed rounded-lg p-8 text-center">
-            <BarChart2 className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">
-              Haz clic en "Generar Predicciones" para ver los resultados del modelo.
-            </p>
-          </div>
+            </CardContent>
+          </Card>
         )}
-      </div>
-    </CardContent>
-  </Card>
-)}
 
         {trainingComplete && (
-          <div className="flex justify-end pt-4 border-t">
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button
+              onClick={handleSaveModel}
+              variant="outline"
+              disabled={isTraining}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Guardar Modelo
+            </Button>
             <Button
               onClick={() => {
                 completeModule('trainer');

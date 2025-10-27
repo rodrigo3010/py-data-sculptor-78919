@@ -348,11 +348,27 @@ async def train_model(request: TrainModelRequest):
         # Convert data to DataFrame
         df = pd.DataFrame(request.data, columns=request.columns)
         
+        print(f"DEBUG: DataFrame shape: {df.shape}")
+        print(f"DEBUG: Columns: {df.columns.tolist()}")
+        print(f"DEBUG: Target column: {request.target_column}")
+        print(f"DEBUG: Task type: {request.task_type}")
+        
         # Validate target column
         if request.target_column not in df.columns:
             raise HTTPException(
                 status_code=400,
                 detail=f"Target column '{request.target_column}' not found in data"
+            )
+        
+        # Validate that there are numeric columns for features
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if request.target_column in numeric_cols:
+            numeric_cols.remove(request.target_column)
+        
+        if len(numeric_cols) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No se encontraron columnas numéricas para usar como características. El dataset debe tener al menos una columna numérica además de la columna objetivo."
             )
         
         results = {}
