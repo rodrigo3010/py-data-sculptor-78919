@@ -16,7 +16,7 @@ interface ResultsDialogProps {
 }
 
 export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
-  const { trainingResults, predictions: contextPredictions, setPredictions } = useData();
+  const { trainingResults, predictions: contextPredictions, setPredictions, loadedData } = useData();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -46,7 +46,7 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
   const handleSaveToIndexedDB = async () => {
     if (!trainingResults) return;
 
-    console.log("=== GUARDANDO MODELO ===");
+    console.log("=== GUARDANDO MODELO DESDE RESULTADOS ===");
     console.log("Predicciones en contexto:", contextPredictions.length);
 
     setLoading(true);
@@ -58,16 +58,6 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
 
       if (predictions.length === 0) {
         console.log("No hay predicciones en contexto");
-        // Ya no obtenemos del backend, las predicciones vienen del entrenamiento frontend
-        try {
-          predictions = [];
-          console.log("Predicciones obtenidas del backend:", predictions.length);
-        } catch (error) {
-          console.error("Error obteniendo predicciones:", error);
-        }
-      }
-
-      if (predictions.length === 0) {
         toast({
           title: "⚠️ Sin predicciones",
           description: "No hay predicciones para guardar. Entrena un modelo primero.",
@@ -80,6 +70,14 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
       const errors = predictions.map(p => p.error || 0);
       const errorPercentages = predictions.map(p => p.error_percentage || 0);
 
+      // Crear una copia profunda del dataset para evitar problemas de referencia
+      const datasetCopy = loadedData ? {
+        tableName: loadedData.tableName,
+        columns: [...loadedData.columns], // Copia del array
+        rows: JSON.parse(JSON.stringify(loadedData.rows)), // Copia profunda
+        totalRows: loadedData.rows.length
+      } : undefined;
+
       const savedModel = {
         model_name: `Modelo ${new Date().toLocaleString()}`,
         framework: trainingResults.framework,
@@ -89,20 +87,38 @@ export const ResultsDialog = ({ open, onOpenChange }: ResultsDialogProps) => {
         model_parameters: trainingResults.model_parameters,
         training_time: trainingResults.training_time,
         metrics: trainingResults.metrics,
-        predictions: predictions,
+        predictions: JSON.parse(JSON.stringify(predictions)), // Copia profunda
         total_predictions: predictions.length,
         avg_error: errors.length > 0 ? errors.reduce((a, b) => a + b, 0) / errors.length : 0,
         avg_error_percentage: errorPercentages.length > 0 ? errorPercentages.reduce((a, b) => a + b, 0) / errorPercentages.length : 0,
-        training_results: trainingResults
+        training_results: JSON.parse(JSON.stringify(trainingResults)), // Copia profunda
+        dataset: datasetCopy
       };
 
-      console.log("Modelo a guardar:", savedModel);
+      console.log("💾 Guardando modelo con dataset:", {
+        model_name: savedModel.model_name,
+        predictions: predictions.length,
+        dataset: savedModel.dataset ? {
+          tableName: savedModel.dataset.tableName,
+          rows: savedModel.dataset.totalRows,
+          columns: savedModel.dataset.columns.length,
+          firstRow: savedModel.dataset.rows[0]
+        } : 'No dataset'
+      });
 
-      await db.saveModel(savedModel);
+      const modelId = await db.saveModel(savedModel);
+      console.log("✅ Modelo guardado con ID:", modelId);
+
+      // Verificar que se guardó correctamente
+      const verifyModel = await db.getModel(modelId);
+      console.log("🔍 Verificación del modelo guardado:", {
+        hasDataset: !!verifyModel?.dataset,
+        datasetRows: verifyModel?.dataset?.totalRows || 0
+      });
 
       toast({
         title: "✅ Guardado Exitosamente",
-        description: `Modelo con ${predictions.length} predicciones guardado`,
+        description: `Modelo con ${predictions.length} predicciones y dataset (${loadedData?.rows.length || 0} filas) guardado`,
       });
     } catch (error: any) {
       console.error("Error guardando:", error);

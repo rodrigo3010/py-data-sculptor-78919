@@ -340,6 +340,14 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
       const errors = predictions.map((p: any) => p.error || 0);
       const errorPercentages = predictions.map((p: any) => p.error_percentage || 0);
 
+      // Crear una copia profunda del dataset para evitar problemas de referencia
+      const datasetCopy = loadedData ? {
+        tableName: loadedData.tableName,
+        columns: [...loadedData.columns], // Copia del array
+        rows: JSON.parse(JSON.stringify(loadedData.rows)), // Copia profunda
+        totalRows: loadedData.rows.length
+      } : undefined;
+
       const savedModel = {
         model_name: `Modelo ${new Date().toLocaleString()}`,
         framework: trainingResults?.framework || "scikit-learn",
@@ -349,29 +357,34 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
         model_parameters: trainingResults?.model_parameters,
         training_time: trainingResults?.training_time,
         metrics: trainingResults?.metrics || {},
-        predictions: predictions,
+        predictions: JSON.parse(JSON.stringify(predictions)), // Copia profunda
         total_predictions: predictions.length,
         avg_error: errors.length > 0 ? errors.reduce((a: number, b: number) => a + b, 0) / errors.length : 0,
         avg_error_percentage: errorPercentages.length > 0 ? errorPercentages.reduce((a: number, b: number) => a + b, 0) / errorPercentages.length : 0,
-        training_results: trainingResults,
-        dataset: loadedData ? {
-          tableName: loadedData.tableName,
-          columns: loadedData.columns,
-          rows: loadedData.rows,
-          totalRows: loadedData.rows.length
-        } : undefined
+        training_results: JSON.parse(JSON.stringify(trainingResults)), // Copia profunda
+        dataset: datasetCopy
       };
 
       console.log("💾 Guardando modelo con dataset:", {
+        model_name: savedModel.model_name,
         predictions: predictions.length,
         dataset: savedModel.dataset ? {
           tableName: savedModel.dataset.tableName,
           rows: savedModel.dataset.totalRows,
-          columns: savedModel.dataset.columns.length
+          columns: savedModel.dataset.columns.length,
+          firstRow: savedModel.dataset.rows[0]
         } : 'No dataset'
       });
 
-      await db.saveModel(savedModel);
+      const modelId = await db.saveModel(savedModel);
+      console.log("✅ Modelo guardado con ID:", modelId);
+
+      // Verificar que se guardó correctamente
+      const verifyModel = await db.getModel(modelId);
+      console.log("🔍 Verificación del modelo guardado:", {
+        hasDataset: !!verifyModel?.dataset,
+        datasetRows: verifyModel?.dataset?.totalRows || 0
+      });
 
       toast({
         title: "✅ Modelo Guardado",
@@ -772,7 +785,7 @@ export const ModelTrainerDialog = ({ open, onOpenChange, onComplete }: ModelTrai
         {loadedData && (
           <div className="mt-4 space-y-4">
             <DatasetStatus showDetails={true} />
-            
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm font-medium">Vista Previa de Datos</CardTitle>

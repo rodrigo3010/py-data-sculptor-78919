@@ -235,6 +235,18 @@ export const SavedModelsViewer = ({ open, onOpenChange }: SavedModelsViewerProps
                       <Button
                         variant="outline"
                         onClick={() => {
+                          console.log("🔍 Click en Ver Tabla:", {
+                            modelName: model.model_name,
+                            hasDataset: !!model.dataset,
+                            datasetInfo: model.dataset ? {
+                              tableName: model.dataset.tableName,
+                              rows: model.dataset.totalRows,
+                              columns: model.dataset.columns?.length || 0,
+                              hasRows: !!model.dataset.rows,
+                              rowsLength: model.dataset.rows?.length || 0
+                            } : null
+                          });
+                          
                           if (model.dataset) {
                             setSelectedModel(model);
                             setShowDataset(true);
@@ -294,11 +306,24 @@ interface DatasetViewDialogProps {
 const DatasetViewDialog = ({ model, open, onOpenChange }: DatasetViewDialogProps) => {
   const [searchQuery, setSearchQuery] = useState("");
 
+  console.log("📊 DatasetViewDialog render:", {
+    open,
+    hasDataset: !!model.dataset,
+    modelName: model.model_name
+  });
+
   if (!model.dataset) {
+    console.log("⚠️ No hay dataset en el modelo");
     return null;
   }
 
   const { tableName, columns, rows } = model.dataset;
+  
+  console.log("✅ Dataset disponible:", {
+    tableName,
+    columnsLength: columns?.length || 0,
+    rowsLength: rows?.length || 0
+  });
 
   // Filtrar filas basándose en la búsqueda
   const filteredRows = searchQuery.trim()
