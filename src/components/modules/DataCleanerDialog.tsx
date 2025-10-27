@@ -38,16 +38,16 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
   const { loadedData, setLoadedData, completeModule } = useData();
   const [showCleaned, setShowCleaned] = useState(false);
   const [cleanedData, setCleanedData] = useState<any[]>([]);
+  // Estado global
   const [imputationMethod, setImputationMethod] = useState("mean");
-  const [removeNulls, setRemoveNulls] = useState(false);
   const [enableImputation, setEnableImputation] = useState(false);
-  const [normalizationMethod, setNormalizationMethod] = useState("minmax");
-  const [removeOutliers, setRemoveOutliers] = useState(false);
-  const [outlierMethod, setOutlierMethod] = useState("iqr");
   const [loading, setLoading] = useState(false);
-  const [removeDuplicates, setRemoveDuplicates] = useState(false);
-  const [normalizeText, setNormalizeText] = useState(false);
-  const [trimSpaces, setTrimSpaces] = useState(true);
+
+  // Estado por sección
+  const [removeNulls, setRemoveNulls] = useState(false); // Nulos
+  const [removeDuplicates, setRemoveDuplicates] = useState(false); // Duplicados
+  const [normalizeText, setNormalizeText] = useState(false); // Inconsistencias
+  const [trimSpaces, setTrimSpaces] = useState(true); // Inconsistencias
 
   const displayData = showCleaned ? cleanedData : (loadedData?.rows.slice(0, 5) || dirtyData);
   const displayColumns = loadedData?.columns || ["id", "nombre", "edad", "ciudad", "salario"];
@@ -61,12 +61,12 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
         const value = row[col];
         // Detectar null, undefined, strings vacíos, "null", "NULL", "NaN", espacios
         if (
-          value === null || 
-          value === undefined || 
-          value === '' || 
-          value === 'null' || 
-          value === 'NULL' || 
-          value === 'NaN' || 
+          value === null ||
+          value === undefined ||
+          value === '' ||
+          value === 'null' ||
+          value === 'NULL' ||
+          value === 'NaN' ||
           value === 'nan' ||
           (typeof value === 'string' && value.trim() === '') ||
           (typeof value === 'number' && isNaN(value))
@@ -80,71 +80,96 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
   const calculateDuplicates = () => {
     if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return 0;
-    
+
     // Identificar columnas que probablemente son IDs (para ignorarlas)
     const idColumns = loadedData.columns.filter(col => {
       const colLower = col.toLowerCase();
       // Detectar columnas de ID comunes
-      if (colLower === 'id' || colLower === '_id' || colLower === 'index' || 
-          colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+      if (colLower === "id" || colLower === "_id" || colLower === "index" ||
+          colLower === "row_id" || colLower === "pk" || colLower.endsWith("_id")) {
         // Verificar si es única (característica de un ID)
         const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
         return uniqueValues.size === loadedData.rows.length;
       }
       return false;
     });
-    
+
     // Columnas a considerar para duplicados (todas excepto IDs)
     const columnsToCheck = loadedData.columns.filter(col => !idColumns.includes(col));
-    
+
     // Si no hay columnas para verificar, usar todas
     const finalColumns = columnsToCheck.length > 0 ? columnsToCheck : loadedData.columns;
-    
+
     const seen = new Set();
-    let duplicates = 0;
-    
+    const duplicateRows = [];
+
+    // Primera pasada: identificar todas las filas duplicadas
     loadedData.rows.forEach(row => {
-      // Crear una representación normalizada usando solo las columnas relevantes
       const rowKey = finalColumns
         .map(col => {
           const value = row[col];
           // Normalizar valores para comparación
-          if (value === null || value === undefined || value === '') return 'NULL';
-          if (typeof value === 'string') return value.trim().toLowerCase();
+          if (value === null || value === undefined || value === "") return "NULL";
+          if (typeof value === "string") return value.trim().toLowerCase();
           return String(value);
         })
-        .join('|');
-      
+        .join("|");
+
       if (seen.has(rowKey)) {
-        duplicates++;
+        duplicateRows.push(rowKey);
       } else {
         seen.add(rowKey);
       }
     });
-    return duplicates;
+
+    // Segunda pasada: contar solo las apariciones después de la primera
+    const duplicateCounts = new Map();
+    let totalDuplicates = 0;
+    
+    loadedData.rows.forEach(row => {
+      const rowKey = finalColumns
+        .map(col => {
+          const value = row[col];
+          if (value === null || value === undefined || value === "") return "NULL";
+          if (typeof value === "string") return value.trim().toLowerCase();
+          return String(value);
+        })
+        .join("|");
+
+      if (duplicateRows.includes(rowKey)) {
+        const count = (duplicateCounts.get(rowKey) || 0) + 1;
+        duplicateCounts.set(rowKey, count);
+        // Solo contar si no es la primera ocurrencia
+        if (count > 1) {
+          totalDuplicates++;
+        }
+      }
+    });
+
+    return totalDuplicates;
   };
 
   // Obtener ejemplos de filas duplicadas
   const getDuplicateExamples = () => {
     if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return [];
-    
+
     // Identificar columnas que probablemente son IDs (para ignorarlas)
     const idColumns = loadedData.columns.filter(col => {
       const colLower = col.toLowerCase();
-      if (colLower === 'id' || colLower === '_id' || colLower === 'index' || 
+      if (colLower === 'id' || colLower === '_id' || colLower === 'index' ||
           colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
         const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
         return uniqueValues.size === loadedData.rows.length;
       }
       return false;
     });
-    
+
     // Columnas a considerar para duplicados (todas excepto IDs)
     const columnsToCheck = loadedData.columns.filter(col => !idColumns.includes(col));
     const finalColumns = columnsToCheck.length > 0 ? columnsToCheck : loadedData.columns;
-    
+
     const rowMap = new Map<string, number[]>();
-    
+
     loadedData.rows.forEach((row, index) => {
       const rowKey = finalColumns
         .map(col => {
@@ -154,13 +179,13 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
           return String(value);
         })
         .join('|');
-      
+
       if (!rowMap.has(rowKey)) {
         rowMap.set(rowKey, []);
       }
       rowMap.get(rowKey)!.push(index);
     });
-    
+
     // Retornar solo las filas que tienen duplicados
     const duplicateGroups: Array<{indices: number[], row: any}> = [];
     rowMap.forEach((indices, key) => {
@@ -171,7 +196,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
         });
       }
     });
-    
+
     return duplicateGroups.slice(0, 3); // Máximo 3 ejemplos
   };
 
@@ -179,18 +204,18 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
   const getNullsByColumn = () => {
     if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) return {};
     const nullsByCol: Record<string, number> = {};
-    
+
     loadedData.columns.forEach(col => {
       nullsByCol[col] = 0;
       loadedData.rows.forEach(row => {
         const value = row[col];
         if (
-          value === null || 
-          value === undefined || 
-          value === '' || 
-          value === 'null' || 
-          value === 'NULL' || 
-          value === 'NaN' || 
+          value === null ||
+          value === undefined ||
+          value === '' ||
+          value === 'null' ||
+          value === 'NULL' ||
+          value === 'NaN' ||
           value === 'nan' ||
           (typeof value === 'string' && value.trim() === '') ||
           (typeof value === 'number' && isNaN(value))
@@ -199,24 +224,37 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
         }
       });
     });
-    
+
     return nullsByCol;
   };
 
-  const calculateInconsistencies = () => {
-    if (!loadedData) return 0;
+  const calculateInconsistencies = (data: any[] = loadedData?.rows || [], columns: string[] = loadedData?.columns || []) => {
+    if (!data || data.length === 0 || !columns || columns.length === 0) return 0;
     let inconsistencies = 0;
-    loadedData.rows.forEach(row => {
-      loadedData.columns.forEach(col => {
-        const value = row[col];
-        if (typeof value === 'string') {
-          // Check for mixed case or extra spaces
-          if (value !== value.trim() || (value.toLowerCase() !== value && value.toUpperCase() !== value)) {
-            inconsistencies++;
+
+    columns.forEach(column => {
+      const values = data.map(row => row[column]).filter(v => v !== null && v !== undefined && v !== "");
+      const valueMap = new Map();
+
+      // Agrupar valores similares (sin considerar mayúsculas/espacios)
+      values.forEach(value => {
+        if (typeof value === "string") {
+          const normalized = value.toString().trim().toLowerCase();
+          if (!valueMap.has(normalized)) {
+            valueMap.set(normalized, []);
           }
+          valueMap.get(normalized).push(value);
+        }
+      });
+
+      // Contar inconsistencias (variantes del mismo valor)
+      valueMap.forEach(variants => {
+        if (variants.length > 1 && new Set(variants).size > 1) {
+          inconsistencies += variants.length - 1;
         }
       });
     });
+
     return inconsistencies;
   };
 
@@ -284,7 +322,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Limpiar Datos</DialogTitle>
           <DialogDescription>
@@ -324,7 +362,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                   <li>• Ejemplo: edad sin valor, ciudad en blanco</li>
                   <li>• Problema: impide cálculos y puede sesgar resultados</li>
                 </ul>
-                
+
                 {/* Mostrar nulos por columna */}
                 {loadedData && calculateNulls() > 0 && (
                   <div className="mt-3 space-y-2">
@@ -347,31 +385,63 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
               <div className="space-y-2">
                 <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
-                <div className="border rounded-lg overflow-hidden max-h-64">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {displayColumns.map((col) => (
-                          <TableHead key={col}>{col}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {displayData.map((row, idx) => (
-                        <TableRow key={idx}>
+                <div className="border rounded-lg overflow-auto h-[380px] max-h-[60vh] w-full">
+                  <div style={{ minWidth: "900px" }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
                           {displayColumns.map((col) => (
-                            <TableCell key={col}>
-                              {row[col] === null || row[col] === undefined || row[col] === '' ? (
-                                <Badge variant="destructive">NULL</Badge>
-                              ) : (
-                                String(row[col])
-                              )}
-                            </TableCell>
+                            <TableHead key={col}>{col}</TableHead>
                           ))}
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(() => {
+                          const sourceRows = loadedData && loadedData.rows && loadedData.rows.length > 0
+                            ? loadedData.rows
+                            : displayData;
+                          const hasNull = (r: any) =>
+                            displayColumns.some(col => {
+                              const value = r[col];
+                              return (
+                                value === null ||
+                                value === undefined ||
+                                value === '' ||
+                                value === 'null' ||
+                                value === 'NULL' ||
+                                value === 'NaN' ||
+                                value === 'nan' ||
+                                (typeof value === 'string' && value.trim() === '') ||
+                                (typeof value === 'number' && isNaN(value))
+                              );
+                            });
+                          const rowsToShow = sourceRows.filter(hasNull);
+                          if (rowsToShow.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={displayColumns.length} className="text-center text-sm text-muted-foreground">
+                                  No hay filas con valores nulos
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          return rowsToShow.map((row, idx) => (
+                            <TableRow key={idx} className="bg-yellow-50 dark:bg-yellow-900/10">
+                              {displayColumns.map((col) => (
+                                <TableCell key={col}>
+                                  {row[col] === null || row[col] === undefined || row[col] === '' ? (
+                                    <Badge variant="destructive">NULL</Badge>
+                                  ) : (
+                                    String(row[col])
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ));
+                        })()}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
                 {!loadedData && (
                   <p className="text-sm text-muted-foreground text-center">
@@ -458,7 +528,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                   <li>• Ejemplo: Fila 1 y Fila 5 tienen los mismos datos, solo difieren en ID</li>
                   <li>• <strong>Acción:</strong> Elimina todas las copias excepto la primera</li>
                 </ul>
-                
+
                 {/* Mostrar porcentaje de duplicados */}
                 {loadedData && calculateDuplicates() > 0 && (
                   <div className="mt-3 space-y-3">
@@ -476,7 +546,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
                         </Badge>
                       </div>
                     </div>
-                    
+
                     {/* Ejemplos de filas duplicadas */}
                     {getDuplicateExamples().length > 0 && (
                       <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200 dark:border-yellow-800">
@@ -496,31 +566,88 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
               <div className="space-y-2">
                 <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
-                <div className="border rounded-lg overflow-hidden max-h-64">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {displayColumns.map((col) => (
-                          <TableHead key={col}>{col}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {displayData.map((row, idx) => (
-                        <TableRow key={idx}>
+                <div className="border rounded-lg overflow-auto h-[380px] max-h-[60vh] w-full">
+                  <div style={{ minWidth: "900px" }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
                           {displayColumns.map((col) => (
-                            <TableCell key={col}>
-                              {row[col] === null || row[col] === undefined || row[col] === '' ? (
-                                <Badge variant="destructive">NULL</Badge>
-                              ) : (
-                                String(row[col])
-                              )}
-                            </TableCell>
+                            <TableHead key={col}>{col}</TableHead>
                           ))}
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {(() => {
+                          if (!loadedData || !loadedData.rows || loadedData.rows.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={displayColumns.length} className="text-center text-sm text-muted-foreground">
+                                  No hay datos cargados
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          const idColumns = loadedData.columns.filter(col => {
+                            const colLower = col.toLowerCase();
+                            if (colLower === 'id' || colLower === '_id' || colLower === 'index' ||
+                                colLower === 'row_id' || colLower === 'pk' || colLower.endsWith('_id')) {
+                              const uniqueValues = new Set(loadedData.rows.map(r => r[col]));
+                              return uniqueValues.size === loadedData.rows.length;
+                            }
+                            return false;
+                          });
+                          const columnsToCheck = loadedData.columns.filter(col => !idColumns.includes(col));
+                          const finalColumns = columnsToCheck.length > 0 ? columnsToCheck : loadedData.columns;
+                          const occurrences = loadedData.rows.reduce((acc, r, i) => {
+                            const key = finalColumns
+                              .map(col => {
+                                const value = r[col];
+                                if (value === null || value === undefined || value === '') return 'NULL';
+                                if (typeof value === 'string') return value.trim().toLowerCase();
+                                return String(value);
+                              })
+                              .join('|');
+                            if (!acc[key]) acc[key] = [];
+                            acc[key].push(i);
+                            return acc;
+                          }, {} as Record<string, number[]>);
+                          const rowsToShow = loadedData.rows.filter(r => {
+                            const key = finalColumns
+                              .map(col => {
+                                const value = r[col];
+                                if (value === null || value === undefined || value === '') return 'NULL';
+                                if (typeof value === 'string') return value.trim().toLowerCase();
+                                return String(value);
+                              })
+                              .join('|');
+                            return occurrences[key] && occurrences[key].length > 1;
+                          });
+                          if (rowsToShow.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={displayColumns.length} className="text-center text-sm text-muted-foreground">
+                                  No hay filas duplicadas
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          return rowsToShow.map((row, idx) => (
+                            <TableRow key={idx} className="bg-yellow-50 dark:bg-yellow-900/10">
+                              {displayColumns.map((col) => (
+                                <TableCell key={col}>
+                                  {row[col] === null || row[col] === undefined || row[col] === '' ? (
+                                    <Badge variant="destructive">NULL</Badge>
+                                  ) : (
+                                    String(row[col])
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ));
+                        })()}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
 
@@ -566,37 +693,71 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
               <div className="space-y-2">
                 <Label>Datos {showCleaned ? "después de limpieza" : (loadedData ? "cargados" : "de ejemplo")}</Label>
-                <div className="border rounded-lg overflow-hidden max-h-64">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {displayColumns.map((col) => (
-                          <TableHead key={col}>{col}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {displayData.map((row, idx) => (
-                        <TableRow key={idx}>
+                <div className="border rounded-lg overflow-hidden h-[380px] w-full">
+                  <div style={{ minWidth: "900px" }}>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
                           {displayColumns.map((col) => (
-                            <TableCell key={col}>
-                              {row[col] === null || row[col] === undefined || row[col] === '' ? (
-                                <Badge variant="destructive">NULL</Badge>
-                              ) : (
-                                String(row[col])
-                              )}
-                            </TableCell>
+                            <TableHead key={col}>{col}</TableHead>
                           ))}
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody className="block h-[340px] overflow-y-auto">
+                        {(() => {
+                          const sourceRows = loadedData && loadedData.rows && loadedData.rows.length > 0
+                            ? loadedData.rows
+                            : displayData;
+
+                          const isInconsistent = (row: any) => {
+                            return displayColumns.some(col => {
+                              const value = row[col];
+                              if (value === null || value === undefined || value === "") return false;
+                              const strValue = String(value);
+                              const normalized = strValue.trim().toLowerCase();
+                              // Verificar si hay otras variantes del mismo valor normalizado
+                              return sourceRows.some(otherRow => {
+                                const otherValue = otherRow[col];
+                                if (otherValue === null || otherValue === undefined || otherValue === "") return false;
+                                return String(otherValue).trim().toLowerCase() === normalized && 
+                                       String(otherValue) !== strValue;
+                              });
+                            });
+                          };
+
+                          const rowsToShow = sourceRows.filter(isInconsistent);
+                          if (rowsToShow.length === 0) {
+                            return (
+                              <TableRow>
+                                <TableCell colSpan={displayColumns.length} className="text-center text-sm text-muted-foreground">
+                                  No hay filas con inconsistencias de texto
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
+                          return rowsToShow.map((row, idx) => (
+  <TableRow key={idx} className="bg-orange-50 dark:bg-orange-900/10">
+                              {displayColumns.map((col) => (
+                                <TableCell key={col}>
+                                  {row[col] === null || row[col] === undefined || row[col] === "" ? (
+                                    <Badge variant="destructive">NULL</Badge>
+                                  ) : (
+                                    String(row[col])
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ));
+                        })()}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="normalize-text">Normalizar texto (convertir a minúsculas)</Label>
-                <Switch 
+                <Switch
                   id="normalize-text"
                   checked={normalizeText}
                   onCheckedChange={setNormalizeText}
@@ -605,7 +766,7 @@ export const DataCleanerDialog = ({ open, onOpenChange, onComplete }: DataCleane
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="trim-spaces">Eliminar espacios en blanco extra</Label>
-                <Switch 
+                <Switch
                   id="trim-spaces"
                   checked={trimSpaces}
                   onCheckedChange={setTrimSpaces}

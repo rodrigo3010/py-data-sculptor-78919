@@ -327,7 +327,7 @@ export const DataLoaderDialog = ({ open, onOpenChange, onComplete }: DataLoaderD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Cargar Datos</DialogTitle>
           <DialogDescription>
